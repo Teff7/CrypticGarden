@@ -145,8 +145,10 @@ body{margin:0; background:var(--bg); color:var(--fg);
   grid-template-columns:repeat(5,1fr);
   gap:2px;
   width:min(80vw,250px);
-  aspect-ratio:1;       /* container stays square */
+  aspect-ratio:1;
+  margin: 0 auto;   /* centres horizontally */
 }
+
 .share-cell{ aspect-ratio:1; }
 
 
