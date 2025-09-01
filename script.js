@@ -306,8 +306,8 @@ function buildShareText(){
     }
     lines.push(line);
   }
-  lines.push('I beat todays cryptic crossword!');
-  lines.push('https://mvpgarden.vercel.app/');
+  lines.push('I beat the cryptic crossword! Can you?');
+  lines.push('https://cryptic-garden.vercel.app/');
   return lines.join('\n');
 }
 
