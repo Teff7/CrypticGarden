@@ -306,8 +306,8 @@ function buildShareText(){
     }
     lines.push(line);
   }
-  lines.push('I beat todays cryptic crossword!');
-  lines.push('https://mvpgarden.vercel.app/');
+  lines.push('I beat the cryptic crossword! Can you?');
+  lines.push('https://cryptic-garden.vercel.app/');
   return lines.join('\n');
 }
 
@@ -440,11 +440,13 @@ function moveCursor(dx, dy){
   const cols = grid[0].length;
   let nr = r + dy;
   let nc = c + dx;
+
   // Skip over locked cells so navigation can pass solved clues.
   while (nr >= 0 && nr < rows && nc >= 0 && nc < cols){
     const k = key(nr, nc);
     const cell = cellMap.get(k);
     if (cell && !cell.block && !cell.locked){
+
       const dir = dx !== 0 ? 'across' : 'down';
       const ent = cell.entries.find(e => e.direction === dir) || cell.entries[0];
       if (ent) setCurrentEntry(ent, k); else { activeCellKey = k; renderLetters(); }
