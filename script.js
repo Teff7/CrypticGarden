@@ -630,8 +630,11 @@ function setupHandlers(){
     e.target.value = '';
   });
   document.addEventListener('keydown', e => {
-    if (/^[a-zA-Z]$/.test(e.key)) typeChar(e.key);
-    else if (e.key === 'Backspace'){ e.preventDefault(); backspace(); }
+    if (/^[a-zA-Z]$/.test(e.key)) {
+      // If the hidden mobile input is focused, its own input listener
+      // already handled this character. Avoid duplicating it.
+      if (e.target !== mobileInput) typeChar(e.key);
+    } else if (e.key === 'Backspace'){ e.preventDefault(); backspace(); }
     else if (e.key === 'Enter'){ submitAnswer(); }
     else if (e.key === 'ArrowLeft'){ e.preventDefault(); moveCursor(-1,0); }
     else if (e.key === 'ArrowRight'){ e.preventDefault(); moveCursor(1,0); }
