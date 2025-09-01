@@ -68,9 +68,10 @@ const NUMBER_COLOURS = { '1': 'green', '2': 'yellow', '3': 'purple' };
 // Actual colour values used when rendering the grid.  These are fairly light so
 // that the black text remains legible over them.
 const BASE_COLOUR_VALUES = {
-  green: '#a8e6a8',
-  yellow: '#fff59d',
-  purple: '#d8b4fe'
+  // Use slightly more vibrant shades so solved clues stand out.
+  green: '#7be87b',
+  yellow: '#ffe74d',
+  purple: '#c99cff'
 };
 const GREY_VALUE = '#bbb';
 
@@ -439,10 +440,13 @@ function moveCursor(dx, dy){
   const cols = grid[0].length;
   let nr = r + dy;
   let nc = c + dx;
+
+  // Skip over locked cells so navigation can pass solved clues.
   while (nr >= 0 && nr < rows && nc >= 0 && nc < cols){
     const k = key(nr, nc);
     const cell = cellMap.get(k);
-    if (cell && !cell.block){
+    if (cell && !cell.block && !cell.locked){
+
       const dir = dx !== 0 ? 'across' : 'down';
       const ent = cell.entries.find(e => e.direction === dir) || cell.entries[0];
       if (ent) setCurrentEntry(ent, k); else { activeCellKey = k; renderLetters(); }
