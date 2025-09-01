@@ -356,7 +356,8 @@ function renderClue(ent){
     html = escapeHtml((ent.clue && ent.clue.surface) || '');
   }
   const dirLabel = ent.direction[0].toUpperCase() + ent.direction.slice(1);
-  clueHeaderEl.textContent = `${ent.id} — ${dirLabel}`;
+ const num = ent.id.match(/^\d+/)[0];
+clueHeaderEl.textContent = `${num} ${dirLabel}`;  // “1 Across” / “1 Down”
   clueTextEl.className = 'clue';
   clueTextEl.innerHTML = html;
 }
