@@ -68,9 +68,10 @@ const NUMBER_COLOURS = { '1': 'green', '2': 'yellow', '3': 'purple' };
 // Actual colour values used when rendering the grid.  These are fairly light so
 // that the black text remains legible over them.
 const BASE_COLOUR_VALUES = {
-  green: '#a8e6a8',
-  yellow: '#fff59d',
-  purple: '#d8b4fe'
+  // Use slightly more vibrant shades so solved clues stand out.
+  green: '#7be87b',
+  yellow: '#ffe74d',
+  purple: '#c99cff'
 };
 const GREY_VALUE = '#bbb';
 
@@ -153,6 +154,15 @@ function placeEntries(){
 }
 
 // ----- Events -----
+// Return the next unsolved entry after the given index, wrapping around.
+function findNextUnsolvedEntry(startIdx){
+  for (let i = 1; i <= entries.length; i++){
+    const ent = entries[(startIdx + i) % entries.length];
+    if (ent.status !== 'solved') return ent;
+  }
+  return null;
+}
+
 // Return the highlight colour for a given clue id.
 function colourForClue(id){
   const num = (id.match(/^\d+/) || [])[0];
@@ -181,6 +191,12 @@ function onClueSolved(clueId){
     });
   }
   renderLetters();
+
+  if (!puzzleFinished && currentEntry && currentEntry.id === ent.id){
+    const idx = entries.indexOf(ent);
+    const next = findNextUnsolvedEntry(idx);
+    if (next) setCurrentEntry(next);
+  }
 
 }
 
@@ -417,6 +433,29 @@ function handleCellClick(k){
   setCurrentEntry(ent, k);
 }
 
+function moveCursor(dx, dy){
+  if (activeCellKey == null) return;
+  let [r, c] = activeCellKey.split(',').map(Number);
+  const rows = grid.length;
+  const cols = grid[0].length;
+  let nr = r + dy;
+  let nc = c + dx;
+  // Skip over locked cells so navigation can pass solved clues.
+  while (nr >= 0 && nr < rows && nc >= 0 && nc < cols){
+    const k = key(nr, nc);
+    const cell = cellMap.get(k);
+    if (cell && !cell.block && !cell.locked){
+      const dir = dx !== 0 ? 'across' : 'down';
+      const ent = cell.entries.find(e => e.direction === dir) || cell.entries[0];
+      if (ent) setCurrentEntry(ent, k); else { activeCellKey = k; renderLetters(); }
+      lastClickedCellKey = k;
+      break;
+    }
+    nr += dy;
+    nc += dx;
+  }
+}
+
 function nextCell(inc){
   if (!currentEntry) return null;
   let i = currentEntry.iActive;
@@ -464,12 +503,9 @@ function submitAnswer(){
   if (guess === target){
     onClueSolved(currentEntry.id);
     game.classList.add('flash-green');
-      setTimeout(() => {
-        game.classList.remove('flash-green');
-        const idx = entries.indexOf(currentEntry);
-        const next = entries[idx+1];
-        if (next) setCurrentEntry(next);
-      }, 650);
+    setTimeout(() => {
+      game.classList.remove('flash-green');
+    }, 650);
     } else {
       game.classList.add('flash-red');
       setTimeout(() => game.classList.remove('flash-red'), 450);
@@ -592,13 +628,28 @@ function setupHandlers(){
     e.target.value = '';
   });
   document.addEventListener('keydown', e => {
-    if (/^[a-zA-Z]$/.test(e.key)) typeChar(e.key);
-    else if (e.key === 'Backspace'){ e.preventDefault(); backspace(); }
+    if (/^[a-zA-Z]$/.test(e.key)) {
+      // If the hidden mobile input is focused, its own input listener
+      // already handled this character. Avoid duplicating it.
+      if (e.target !== mobileInput) typeChar(e.key);
+    } else if (e.key === 'Backspace'){ e.preventDefault(); backspace(); }
     else if (e.key === 'Enter'){ submitAnswer(); }
-    else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp'){ nextCell(-1); renderLetters(); }
-    else if (e.key === 'ArrowRight' || e.key === 'ArrowDown'){ nextCell(+1); renderLetters(); }
+    else if (e.key === 'ArrowLeft'){ e.preventDefault(); moveCursor(-1,0); }
+    else if (e.key === 'ArrowRight'){ e.preventDefault(); moveCursor(1,0); }
+    else if (e.key === 'ArrowUp'){ e.preventDefault(); moveCursor(0,-1); }
+    else if (e.key === 'ArrowDown'){ e.preventDefault(); moveCursor(0,1); }
   });
 }
+function focusFirstCell(){
+  const start = key(0,0);
+  const cell = cellMap.get(start);
+  if (cell && !cell.block){
+    handleCellClick(start);
+  } else if (entries[0]){
+    setCurrentEntry(entries[0]);
+  }
+}
+
 function restartGame(){
   entries.forEach(ent => {
     ent.status = 'unsolved';
@@ -616,7 +667,7 @@ function restartGame(){
   const fireworks = document.getElementById('fireworks');
   if (fireworks) fireworks.classList.remove('on');
 
-  setCurrentEntry(entries[0]);
+  focusFirstCell();
   renderLetters();
 }
 
@@ -645,7 +696,7 @@ window.addEventListener('load', () => {
   if (inlineLoaded) {
     buildGrid();
     placeEntries();
-    setCurrentEntry((puzzle.entries || [])[0]);
+    focusFirstCell();
     if (mobileInput) mobileInput.focus();
     return;
   }
@@ -659,7 +710,7 @@ window.addEventListener('load', () => {
       puzzle = json;
       buildGrid();
       placeEntries();
-      setCurrentEntry((puzzle.entries || [])[0]);
+      focusFirstCell();
       if (mobileInput) mobileInput.focus();
     })
     .catch(err => {
@@ -670,7 +721,7 @@ window.addEventListener('load', () => {
       };
       buildGrid();
       placeEntries();
-      setCurrentEntry(puzzle.entries[0]);
+      focusFirstCell();
       if (mobileInput) mobileInput.focus();
     });
 });
