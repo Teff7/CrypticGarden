@@ -577,6 +577,8 @@ function setupHandlers(){
     if (!currentEntry) return;
     currentEntry.cells.forEach((cell, idx) => {
       cell.letter = currentEntry.answer[idx];
+      // Grey out entire answer when revealed
+      cell.isGrey = true;
     });
     // After revealing, re-check all affected clues.
     currentEntry.cells.forEach(cell => cell.entries.forEach(checkIfSolved));
