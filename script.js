@@ -74,6 +74,8 @@ const BASE_COLOUR_VALUES = {
   purple: '#c99cff'
 };
 const GREY_VALUE = '#bbb';
+// Temporary highlight colour for other cells in the active entry
+const ACTIVE_ENTRY_BG = '#eee';
 
 function key(r,c){ return `${r},${c}`; }
 
@@ -415,8 +417,11 @@ function setCurrentEntry(ent, fromCellKey=null){
 
 function highlightActive(){
   if (!currentEntry) return;
-  const cell = currentEntry.cells[currentEntry.iActive];
-  if (cell) cell.el.classList.add('active');
+  const active = currentEntry.cells[currentEntry.iActive];
+  currentEntry.cells.forEach(c => {
+    if (c !== active) c.el.style.background = ACTIVE_ENTRY_BG;
+  });
+  if (active) active.el.classList.add('active');
 }
 
 function handleCellClick(k){
