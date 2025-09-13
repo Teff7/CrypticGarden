@@ -75,7 +75,7 @@ const BASE_COLOUR_VALUES = {
 };
 const GREY_VALUE = '#bbb';
 // Temporary highlight colour for other cells in the active entry
-const ACTIVE_ENTRY_BG = '#b2b2b2';
+const ACTIVE_ENTRY_BG = '#3c3c3c';
 
 function key(r,c){ return `${r},${c}`; }
 
