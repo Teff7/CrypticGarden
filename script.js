@@ -1,5 +1,5 @@
 // Main game logic; starts directly in game view
-const FILE = 'Clues.json';
+const FILE = 'CLUES (3).JSON';
 
 // Elements
 const welcome = document.getElementById('welcome'); // may be null (welcome removed)
@@ -7,6 +7,8 @@ const game = document.getElementById('game');
 const gridEl = document.getElementById('grid');
 const clueHeaderEl = document.getElementById('clueHeader');
 const clueTextEl = document.getElementById('clueText');
+const puzzleSelect = document.getElementById('puzzleSelect');
+const puzzleDate = document.getElementById('puzzleDate');
 const mobileInput = document.getElementById('mobileInput');
 
 // Top menu removed
@@ -51,6 +53,8 @@ let activeCellKey = null;
 let lastClickedCellKey = null;
 const dirToggle = new Map();
 let puzzleFinished = false;
+let puzzles = [];
+let currentPuzzleIndex = 0;
 
 const TIP = {
   acrostic: 'Take first letters.',
@@ -58,8 +62,35 @@ const TIP = {
   anagram: 'Shuffle the letters.',
   deletion: 'Remove letters.',
   charade: 'Build from parts.',
-  lit: 'Whole clue is both definition and wordplay.'
+  lit: 'Whole clue is both definition and wordplay.',
+  container: 'Put one thing inside another.',
+  reversal: 'Read the letters the other way.',
+  homophone: 'Sounds like another word.',
+  double: 'Two straight definitions.',
+  spoonerism: 'Swap the starting sounds.',
+  substitution: 'Swap one letter for another.',
+  selection: 'Pick specific letters.'
 };
+
+const GRID_TEMPLATE = {
+  rows: 5,
+  cols: 5,
+  blocks: [[1, 1], [1, 3], [3, 1], [3, 3]],
+  numbers: {
+    all: [[0, 0, '1'], [0, 2, '2'], [0, 4, '3'], [2, 0, '2'], [4, 0, '3']]
+  }
+};
+
+const POSITION_MAP = {
+  '1A': { id: '1A', direction: 'across', row: 0, col: 0 },
+  '2A': { id: '2A', direction: 'across', row: 2, col: 0 },
+  '3A': { id: '3A', direction: 'across', row: 4, col: 0 },
+  '1D': { id: '1D', direction: 'down', row: 0, col: 0 },
+  '2D': { id: '2D', direction: 'down', row: 0, col: 2 },
+  '3D': { id: '3D', direction: 'down', row: 0, col: 4 }
+};
+
+const POSITION_ORDER = ['1A', '2A', '3A', '1D', '2D', '3D'];
 
 // Mapping from clue numbers to their highlight colours. Both the across and
 // down clues with the same number share a colour.
@@ -135,8 +166,9 @@ function placeEntries(){
     direction: e.direction, // 'across'|'down'
     row: e.row,
     col: e.col,
-    answer: e.answer.toUpperCase(),
+    answer: (e.answer || '').toUpperCase(),
     clue: e.clue,
+    enumeration: e.enumeration || null,
     cells: [],
     iActive: 0,
     // Track whether the clue has been solved.
@@ -343,23 +375,16 @@ function closeShareModal(){
 
 function renderClue(ent){
   const segs = (ent.clue && ent.clue.segments) || [];
-  let html;
-  if (segs.length) {
-    html = segs.map(seg => {
-      const cls = seg.type === 'definition' ? 'def' : seg.type;
-      const tip = seg.tooltip || TIP[seg.category] || '';
-      return `<span class="${cls}" data-tooltip="${escapeHtml(tip)}">${escapeHtml(seg.text)}</span>`;
-    }).join(' ');
-    const enumeration = ent.answer ? String(ent.answer.length) : '';
-    if (enumeration) {
-      html += ` (<span class="enumeration">${enumeration}</span>)`;
-    }
-  } else {
-    html = escapeHtml((ent.clue && ent.clue.surface) || '');
+  const surface = (ent.clue && ent.clue.surface) || '';
+  let html = buildClueMarkup(surface, segs);
+  if (!html) html = escapeHtml(surface);
+  const enumeration = ent.enumeration || (ent.answer ? String(ent.answer.length) : '');
+  if (enumeration) {
+    html += ` (<span class="enumeration">${escapeHtml(enumeration)}</span>)`;
   }
   const dirLabel = ent.direction[0].toUpperCase() + ent.direction.slice(1);
- const num = ent.id.match(/^\d+/)[0];
-clueHeaderEl.textContent = `${num} ${dirLabel}`;  // “1 Across” / “1 Down”
+  const num = ent.id.match(/^\d+/)[0];
+  clueHeaderEl.textContent = `${num} ${dirLabel}`;  // “1 Across” / “1 Down”
   clueTextEl.className = 'clue';
   clueTextEl.innerHTML = html;
 }
@@ -527,6 +552,13 @@ function finishGame(){
 
 // ----- Help & hints & misc -----
 function setupHandlers(){
+  if (puzzleSelect) puzzleSelect.addEventListener('change', () => {
+    const value = puzzleSelect.value;
+    const idx = Number(value);
+    if (value === '' || Number.isNaN(idx) || !puzzles[idx]) return;
+    loadPuzzleByIndex(idx);
+  });
+
   // Help modal open/close
   const openHelp = () => { helpModal.hidden = false; };
   const closeHelp = () => { helpModal.hidden = true; };
@@ -677,6 +709,8 @@ function restartGame(){
   const fireworks = document.getElementById('fireworks');
   if (fireworks) fireworks.classList.remove('on');
 
+  if (clueTextEl) clueTextEl.classList.remove('help-on', 'annot-on');
+
   focusFirstCell();
   renderLetters();
 }
@@ -687,51 +721,290 @@ function escapeHtml(s=''){
   ));
 }
 
-// ----- Boot -----
-window.addEventListener('load', () => {
-  // Set up UI handlers immediately
-  setupHandlers();
+function buildClueMarkup(surface='', segments=[]){
+  const text = surface || '';
+  if (!text) return '';
+  if (!Array.isArray(segments) || !segments.length) return escapeHtml(text);
 
-  // Try inline JSON first
-  let inlineLoaded = false;
-  const inline = document.getElementById('puzzleData');
-  if (inline && inline.textContent) {
-    try {
-      puzzle = JSON.parse(inline.textContent);
-      inlineLoaded = true;
-    } catch (e) {
-      console.error('Inline JSON parse failed', e);
+  const lower = text.toLowerCase();
+  const taken = Array(text.length).fill(false);
+  const matches = [];
+
+  segments.forEach((seg, idx) => {
+    const segText = seg && seg.text ? String(seg.text).trim() : '';
+    if (!segText) return;
+    const segLower = segText.toLowerCase();
+    let start = lower.indexOf(segLower);
+    while (start !== -1){
+      let free = true;
+      for (let i = start; i < start + segLower.length; i++){
+        if (taken[i]) { free = false; break; }
+      }
+      if (free){
+        matches.push({ start, end: start + segLower.length, seg, order: idx });
+        for (let i = start; i < start + segLower.length; i++) taken[i] = true;
+        break;
+      }
+      start = lower.indexOf(segLower, start + 1);
     }
+  });
+
+  if (!matches.length) return escapeHtml(text);
+
+  matches.sort((a,b) => (a.start - b.start) || (a.order - b.order));
+
+  let html = '';
+  let cursor = 0;
+  matches.forEach(match => {
+    if (cursor < match.start){
+      html += escapeHtml(text.slice(cursor, match.start));
+    }
+    const seg = match.seg || {};
+    const cls = seg.type === 'definition' ? 'def' : seg.type;
+    const tip = seg.tooltip || (seg.category && TIP[seg.category]) || '';
+    const segmentText = text.slice(match.start, match.end);
+    html += `<span class="${cls}" data-tooltip="${escapeHtml(tip)}">${escapeHtml(segmentText)}</span>`;
+    cursor = match.end;
+  });
+  if (cursor < text.length){
+    html += escapeHtml(text.slice(cursor));
   }
-  if (inlineLoaded) {
-    buildGrid();
-    placeEntries();
-    focusFirstCell();
-    if (mobileInput) mobileInput.focus();
+  return html;
+}
+
+function cloneGridTemplate(){
+  return {
+    rows: GRID_TEMPLATE.rows,
+    cols: GRID_TEMPLATE.cols,
+    blocks: GRID_TEMPLATE.blocks.map(pair => pair.slice()),
+    numbers: {
+      all: GRID_TEMPLATE.numbers.all.map(item => item.slice())
+    }
+  };
+}
+
+function extractClueParts(raw){
+  if (raw == null) return { surface: '', enumeration: null };
+  let surface = String(raw);
+  let enumeration = null;
+  const match = surface.match(/\s*\(([\d,\-– ]+)\)\s*$/);
+  if (match){
+    enumeration = match[1].replace(/\s+/g, '');
+    surface = surface.slice(0, match.index);
+  }
+  return { surface: surface.trim(), enumeration };
+}
+
+function interpretSegmentType(raw){
+  const lower = String(raw || '').trim().toLowerCase();
+  if (!lower) return { type: 'indicator', category: null };
+  if (lower === 'definition') return { type: 'definition', category: null };
+  if (lower === 'fodder') return { type: 'fodder', category: null };
+  let category = lower;
+  if (category.endsWith(' indicator')) category = category.replace(/\s+indicator$/, '');
+  if (category === 'letter substitution') category = 'substitution';
+  if (category === 'double definition') category = 'double';
+  if (category === 'literally') category = 'lit';
+  if (category === 'selection indicator') category = 'selection';
+  if (!category) category = lower;
+  if (category === 'charade'){
+    return { type: 'fodder', category };
+  }
+  return { type: 'indicator', category };
+}
+
+function buildSegments(row){
+  const segments = [];
+  if (!row) return segments;
+  for (let i = 1; i <= 6; i++){
+    const typeRaw = row[`Tooltip_${i}_type`];
+    const suffix = i === 1 ? '' : `.${i-1}`;
+    const textRaw = row[`Tooltip_section${suffix}`];
+    const tooltipRaw = row[`Tooltip_Text${suffix}`];
+    const segText = textRaw ? String(textRaw).trim() : '';
+    const tipText = tooltipRaw ? String(tooltipRaw).trim() : '';
+    const typeStr = typeRaw ? String(typeRaw).trim() : '';
+    if (!typeStr && !segText) continue;
+    const { type, category } = interpretSegmentType(typeStr);
+    const segment = { type, text: segText };
+    if (category) segment.category = category;
+    if (tipText) segment.tooltip = tipText;
+    segments.push(segment);
+  }
+  return segments;
+}
+
+function createPuzzleFromRows(key, rows){
+  const entries = [];
+  rows.forEach(row => {
+    const pos = String(row.Position || row.position || '').trim().toUpperCase();
+    const layout = POSITION_MAP[pos];
+    if (!layout) return;
+    const { surface, enumeration } = extractClueParts(row.Clue);
+    entries.push({
+      id: layout.id,
+      direction: layout.direction,
+      row: layout.row,
+      col: layout.col,
+      answer: String(row.Solution || '').toUpperCase(),
+      clue: {
+        surface,
+        segments: buildSegments(row)
+      },
+      enumeration: enumeration || null
+    });
+  });
+
+  entries.sort((a,b) => {
+    const ai = POSITION_ORDER.indexOf(a.id);
+    const bi = POSITION_ORDER.indexOf(b.id);
+    if (ai === -1 && bi === -1) return a.id.localeCompare(b.id);
+    if (ai === -1) return 1;
+    if (bi === -1) return -1;
+    return ai - bi;
+  });
+
+  return {
+    id: key,
+    title: `Crossword ${key}`,
+    grid: cloneGridTemplate(),
+    entries
+  };
+}
+
+function parseWorkbook(json){
+  if (!json || !Array.isArray(json.sheets) || !json.sheets[0] || !Array.isArray(json.sheets[0].rows)) {
+    return [];
+  }
+  const rows = json.sheets[0].rows;
+  const grouped = new Map();
+  rows.forEach(row => {
+    const keyRaw = row.Crossword ?? row.crossword;
+    const key = keyRaw != null ? String(keyRaw).trim() : '';
+    if (!key) return;
+    if (!grouped.has(key)) grouped.set(key, []);
+    grouped.get(key).push(row);
+  });
+  const keys = [...grouped.keys()].sort((a,b) => {
+    const na = Number(a);
+    const nb = Number(b);
+    if (!Number.isNaN(na) && !Number.isNaN(nb)) return na - nb;
+    return String(a).localeCompare(String(b));
+  });
+  return keys.map(key => createPuzzleFromRows(key, grouped.get(key) || []));
+}
+
+function populatePuzzleSelect(){
+  if (!puzzleSelect) return;
+  puzzleSelect.innerHTML = '';
+  if (!puzzles.length){
+    const option = document.createElement('option');
+    option.value = '';
+    option.textContent = 'No crosswords found';
+    puzzleSelect.appendChild(option);
+    puzzleSelect.disabled = true;
     return;
   }
-  // Fallback to fetching a file
+  puzzles.forEach((p, idx) => {
+    const option = document.createElement('option');
+    option.value = String(idx);
+    option.textContent = p.title || `Crossword ${p.id || idx + 1}`;
+    puzzleSelect.appendChild(option);
+  });
+  puzzleSelect.disabled = puzzles.length <= 1;
+  puzzleSelect.value = String(currentPuzzleIndex);
+}
+
+function updatePuzzleMeta(){
+  if (!puzzleDate) return;
+  const current = puzzles[currentPuzzleIndex];
+  if (!current){
+    puzzleDate.textContent = '';
+    return;
+  }
+  const label = current.title || `Crossword ${current.id || currentPuzzleIndex + 1}`;
+  if (puzzles.length > 1){
+    puzzleDate.textContent = `${label} (${currentPuzzleIndex + 1}/${puzzles.length})`;
+  } else {
+    puzzleDate.textContent = label;
+  }
+}
+
+function loadPuzzleByIndex(idx){
+  if (!puzzles[idx]) return;
+  currentPuzzleIndex = idx;
+  if (puzzleSelect) puzzleSelect.value = String(idx);
+  applyPuzzle(puzzles[idx]);
+  updatePuzzleMeta();
+}
+
+function applyPuzzle(data){
+  puzzle = data;
+  grid = [];
+  cellMap.clear();
+  entries = [];
+  currentEntry = null;
+  activeCellKey = null;
+  lastClickedCellKey = null;
+  dirToggle.clear();
+  puzzleFinished = false;
+  if (shareModal) shareModal.hidden = true;
+  if (copyToast) copyToast.hidden = true;
+  if (shareGrid) shareGrid.innerHTML = '';
+  const fireworks = document.getElementById('fireworks');
+  if (fireworks) fireworks.classList.remove('on');
+  if (clueTextEl) {
+    clueTextEl.classList.remove('help-on', 'annot-on');
+    clueTextEl.textContent = '';
+  }
+  if (clueHeaderEl) clueHeaderEl.textContent = '—';
+  if (hintDropdown) hintDropdown.classList.remove('open');
+  if (btnHints) btnHints.setAttribute('aria-expanded', 'false');
+  if (hintMenu) hintMenu.setAttribute('aria-hidden', 'true');
+
+  buildGrid();
+  placeEntries();
+  focusFirstCell();
+  if (mobileInput) mobileInput.focus();
+}
+
+function useFallbackPuzzle(){
+  puzzles = [{
+    id: 'fallback',
+    title: 'Fallback Puzzle',
+    grid: cloneGridTemplate(),
+    entries: [
+      { id: '1A', direction: 'across', row: 0, col: 0, answer: 'DISCO', clue: { surface: 'Dance floor genre', segments: [] }, enumeration: '5' },
+      { id: '2A', direction: 'across', row: 2, col: 0, answer: 'INANE', clue: { surface: 'Silly or senseless', segments: [] }, enumeration: '5' },
+      { id: '3A', direction: 'across', row: 4, col: 0, answer: 'TAROT', clue: { surface: 'Cards for fortunes', segments: [] }, enumeration: '5' },
+      { id: '1D', direction: 'down', row: 0, col: 0, answer: 'DRIFT', clue: { surface: 'Move with the tide', segments: [] }, enumeration: '5' },
+      { id: '2D', direction: 'down', row: 0, col: 2, answer: 'STAIR', clue: { surface: 'Single step', segments: [] }, enumeration: '5' },
+      { id: '3D', direction: 'down', row: 0, col: 4, answer: 'OVERT', clue: { surface: 'Plain to see', segments: [] }, enumeration: '5' }
+    ]
+  }];
+  currentPuzzleIndex = 0;
+  populatePuzzleSelect();
+  loadPuzzleByIndex(0);
+}
+
+// ----- Boot -----
+window.addEventListener('load', () => {
+  setupHandlers();
+
   fetch(FILE)
     .then(r => {
       if (!r.ok) throw new Error(`Failed to load ${FILE}: ${r.status}`);
       return r.json();
     })
     .then(json => {
-      puzzle = json;
-      buildGrid();
-      placeEntries();
-      focusFirstCell();
-      if (mobileInput) mobileInput.focus();
+      puzzles = parseWorkbook(json);
+      if (!puzzles.length) throw new Error('No crossword data found in workbook');
+      currentPuzzleIndex = 0;
+      populatePuzzleSelect();
+      loadPuzzleByIndex(0);
     })
     .catch(err => {
-      console.warn('All data sources failed, using tiny placeholder:', err);
-      puzzle = {
-        grid: { rows: 5, cols: 5, blocks: [] },
-        entries: [{ id: '1A', direction: 'across', row: 0, col: 0, answer: 'HELLO', clue: { surface: 'Wave politely (5)' } }]
-      };
-      buildGrid();
-      placeEntries();
-      focusFirstCell();
-      if (mobileInput) mobileInput.focus();
+      console.error('Failed to load crosswords, using fallback data:', err);
+      useFallbackPuzzle();
     });
 });
