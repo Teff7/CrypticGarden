@@ -550,6 +550,12 @@ function finishGame(){
   if (fireworks) fireworks.classList.add('on');
 }
 
+function closeHintDropdown(){
+  if (hintDropdown) hintDropdown.classList.remove('open');
+  if (btnHints) btnHints.setAttribute('aria-expanded', 'false');
+  if (hintMenu) hintMenu.setAttribute('aria-hidden', 'true');
+}
+
 // ----- Help & hints & misc -----
 function setupHandlers(){
   if (puzzleSelect) puzzleSelect.addEventListener('change', () => {
@@ -570,25 +576,39 @@ function setupHandlers(){
   // Hints dropdown
   if (btnHints) btnHints.addEventListener('click', () => {
     const expanded = btnHints.getAttribute('aria-expanded') === 'true';
-    btnHints.setAttribute('aria-expanded', String(!expanded));
-    if (hintMenu) hintMenu.setAttribute('aria-hidden', String(expanded));
-    if (hintDropdown){
-      if (expanded) hintDropdown.classList.remove('open'); else hintDropdown.classList.add('open');
+    if (expanded) {
+      closeHintDropdown();
+    } else {
+      btnHints.setAttribute('aria-expanded', 'true');
+      if (hintMenu) hintMenu.setAttribute('aria-hidden', 'false');
+      if (hintDropdown) hintDropdown.classList.add('open');
     }
   });
   if (btnHintDef) btnHintDef.addEventListener('click', () => {
-    if (!currentEntry) return;
+    if (!currentEntry){
+      closeHintDropdown();
+      return;
+    }
     const shown = clueTextEl.classList.toggle('help-on');
     if (shown) onHintUsed(currentEntry.id, 'definition');
+    closeHintDropdown();
   });
   if (btnHintLetter) btnHintLetter.addEventListener('click', () => {
-    if (!currentEntry) return;
+    if (!currentEntry){
+      closeHintDropdown();
+      return;
+    }
     onHintUsed(currentEntry.id, 'reveal-letter');
+    closeHintDropdown();
   });
   if (btnHintAnalyse) btnHintAnalyse.addEventListener('click', () => {
-    if (!currentEntry) return;
+    if (!currentEntry){
+      closeHintDropdown();
+      return;
+    }
     const shown = clueTextEl.classList.toggle('annot-on');
     if (shown) onHintUsed(currentEntry.id, 'analyse');
+    closeHintDropdown();
   });
 
   // Top Menu dropdown — removed; guards keep this safe if elements don't exist
@@ -642,9 +662,7 @@ function setupHandlers(){
     // Hints
     if (hintDropdown && !hintDropdown.contains(t)){
       if (hintDropdown.classList.contains('open')){
-        hintDropdown.classList.remove('open');
-        if (btnHints) btnHints.setAttribute('aria-expanded','false');
-        if (hintMenu) hintMenu.setAttribute('aria-hidden','true');
+        closeHintDropdown();
       }
     }
     // Top menu
@@ -958,9 +976,7 @@ function applyPuzzle(data){
     clueTextEl.textContent = '';
   }
   if (clueHeaderEl) clueHeaderEl.textContent = '—';
-  if (hintDropdown) hintDropdown.classList.remove('open');
-  if (btnHints) btnHints.setAttribute('aria-expanded', 'false');
-  if (hintMenu) hintMenu.setAttribute('aria-hidden', 'true');
+  closeHintDropdown();
 
   buildGrid();
   placeEntries();
