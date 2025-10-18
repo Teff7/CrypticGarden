@@ -10,6 +10,7 @@ const clueTextEl = document.getElementById('clueText');
 const puzzleSelect = document.getElementById('puzzleSelect');
 const puzzleDate = document.getElementById('puzzleDate');
 const mobileInput = document.getElementById('mobileInput');
+const mobileKeyboard = document.getElementById('mobileKeyboard');
 
 // Top menu removed
 const topMenuWrap = document.getElementById('topMenuWrap');
@@ -36,6 +37,22 @@ const btnBack = document.getElementById('btnBack');
 
 // Additional controls
 const btnGiveUp = document.getElementById('btnGiveUp');
+
+const KEYBOARD_LAYOUT = [
+  ['Q','W','E','R','T','Y','U','I','O','P'],
+  ['A','S','D','F','G','H','J','K','L'],
+  [
+    { type:'close', label:'Close', aria:'Close keyboard', classes:['mobile-key--action'] },
+    'Z','X','C','V','B','N','M',
+    { type:'backspace', label:'⌫', aria:'Backspace', classes:['mobile-key--action'] }
+  ],
+  [
+    { type:'enter', label:'Enter', aria:'Submit answer', classes:['mobile-key--wide'] }
+  ]
+];
+
+let usingCustomKeyboard = false;
+let keyboardVisible = false;
 
 // Share modal elements
 const shareModal = document.getElementById('shareModal');
@@ -107,6 +124,115 @@ const BASE_COLOUR_VALUES = {
 const GREY_VALUE = '#bbb';
 // Temporary highlight colour for other cells in the active entry
 const ACTIVE_ENTRY_BG = '#3c3c3c';
+
+function buildMobileKeyboard(){
+  if (!mobileKeyboard) return;
+  mobileKeyboard.innerHTML = '';
+  const inner = document.createElement('div');
+  inner.className = 'mobile-keyboard__inner';
+  mobileKeyboard.appendChild(inner);
+
+  KEYBOARD_LAYOUT.forEach(row => {
+    const rowEl = document.createElement('div');
+    rowEl.className = 'mobile-keyboard__row';
+    row.forEach(item => {
+      const config = typeof item === 'string'
+        ? { type:'letter', value:item, label:item, aria:`Insert letter ${item.toUpperCase()}` }
+        : { type:item.type, value:item.value || item.type, label:item.label, aria:item.aria, classes:item.classes || [] };
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'mobile-key';
+      if (config.classes){
+        config.classes.forEach(cls => btn.classList.add(cls));
+      }
+      btn.dataset.action = config.type;
+      if (config.type === 'letter'){
+        btn.dataset.value = config.value;
+        btn.setAttribute('aria-label', config.aria || `Insert letter ${config.label.toUpperCase()}`);
+      } else {
+        btn.setAttribute('aria-label', config.aria || config.label);
+      }
+      btn.textContent = config.label;
+      rowEl.appendChild(btn);
+    });
+    inner.appendChild(rowEl);
+  });
+
+  mobileKeyboard.addEventListener('click', handleMobileKeyClick);
+}
+
+function handleMobileKeyClick(event){
+  const button = event.target.closest('button.mobile-key');
+  if (!button || !usingCustomKeyboard) return;
+  const action = button.dataset.action;
+  if (action === 'letter'){
+    typeChar(button.dataset.value || '');
+  } else if (action === 'backspace'){
+    backspace();
+  } else if (action === 'enter'){
+    submitAnswer();
+  } else if (action === 'close'){
+    hideMobileKeyboard();
+  }
+}
+
+function isTouchCapable(){
+  return ('ontouchstart' in window) || (navigator.maxTouchPoints || 0) > 0 || (navigator.msMaxTouchPoints || 0) > 0;
+}
+
+function shouldUseCustomKeyboard(){
+  const mobileWidth = window.matchMedia('(max-width: 900px)').matches;
+  return mobileWidth && isTouchCapable();
+}
+
+function updateKeyboardHeight(){
+  if (!mobileKeyboard || !keyboardVisible) return;
+  const height = mobileKeyboard.offsetHeight;
+  document.body.style.setProperty('--keyboard-height', `${height}px`);
+}
+
+function showMobileKeyboard(){
+  if (!mobileKeyboard || !usingCustomKeyboard) return;
+  if (!mobileKeyboard.classList.contains('open')){
+    mobileKeyboard.classList.add('open');
+    mobileKeyboard.setAttribute('aria-hidden','false');
+  }
+  keyboardVisible = true;
+  document.body.classList.add('keyboard-open');
+  requestAnimationFrame(updateKeyboardHeight);
+}
+
+function hideMobileKeyboard(){
+  if (!mobileKeyboard) return;
+  mobileKeyboard.classList.remove('open');
+  mobileKeyboard.setAttribute('aria-hidden','true');
+  keyboardVisible = false;
+  document.body.classList.remove('keyboard-open');
+  document.body.style.removeProperty('--keyboard-height');
+}
+
+function applyCustomKeyboardMode(){
+  const shouldUse = shouldUseCustomKeyboard();
+  if (shouldUse === usingCustomKeyboard){
+    if (!shouldUse) hideMobileKeyboard(); else updateKeyboardHeight();
+    return;
+  }
+  usingCustomKeyboard = shouldUse;
+  if (usingCustomKeyboard){
+    document.body.classList.add('using-custom-keyboard');
+    if (mobileInput){
+      mobileInput.blur();
+      mobileInput.disabled = true;
+    }
+  } else {
+    document.body.classList.remove('using-custom-keyboard');
+    hideMobileKeyboard();
+    if (mobileInput){
+      mobileInput.disabled = false;
+      mobileInput.focus();
+    }
+  }
+}
 
 function key(r,c){ return `${r},${c}`; }
 
@@ -449,7 +575,7 @@ function highlightActive(){
   if (active) active.el.classList.add('active');
 }
 
-function handleCellClick(k){
+function handleCellClick(k, opts={}){
   const cell = cellMap.get(k);
   if (!cell || cell.block) return;
   const belongs = cell.entries || [];
@@ -462,6 +588,7 @@ function handleCellClick(k){
   const ent = belongs.find(e => e.direction===pref) || belongs[0];
   dirToggle.set(k, ent.direction);
   setCurrentEntry(ent, k);
+  if (usingCustomKeyboard && !opts.suppressKeyboard) showMobileKeyboard();
 }
 
 function moveCursor(dx, dy){
@@ -673,6 +800,11 @@ function setupHandlers(){
         if (menuPanel) menuPanel.setAttribute('aria-hidden','true');
       }
     }
+    if (usingCustomKeyboard && keyboardVisible){
+      if (mobileKeyboard && !mobileKeyboard.contains(t) && (!gridEl || !gridEl.contains(t))){
+        hideMobileKeyboard();
+      }
+    }
   });
 
   // Back (welcome removed) — guard
@@ -699,12 +831,27 @@ function setupHandlers(){
     else if (e.key === 'ArrowUp'){ e.preventDefault(); moveCursor(0,-1); }
     else if (e.key === 'ArrowDown'){ e.preventDefault(); moveCursor(0,1); }
   });
+
+  if (mobileKeyboard){
+    buildMobileKeyboard();
+    applyCustomKeyboardMode();
+    const updateForResize = () => {
+      applyCustomKeyboardMode();
+      if (keyboardVisible) requestAnimationFrame(updateKeyboardHeight);
+    };
+    window.addEventListener('resize', updateForResize);
+    window.addEventListener('orientationchange', () => {
+      setTimeout(updateForResize, 120);
+    });
+  } else {
+    applyCustomKeyboardMode();
+  }
 }
 function focusFirstCell(){
   const start = key(0,0);
   const cell = cellMap.get(start);
   if (cell && !cell.block){
-    handleCellClick(start);
+    handleCellClick(start, { suppressKeyboard: true });
   } else if (entries[0]){
     setCurrentEntry(entries[0]);
   }
@@ -981,7 +1128,8 @@ function applyPuzzle(data){
   buildGrid();
   placeEntries();
   focusFirstCell();
-  if (mobileInput) mobileInput.focus();
+  if (mobileInput && !usingCustomKeyboard) mobileInput.focus();
+  if (usingCustomKeyboard) hideMobileKeyboard();
 }
 
 function useFallbackPuzzle(){
