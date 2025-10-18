@@ -85,6 +85,13 @@ body{
 .menu-item:hover{background:#1e1e1e}
 
 /* Grid */
+.grid-hint-wrap{
+  width:min(640px, 92vw);
+  display:flex;
+  align-items:flex-start;
+  justify-content:center;
+  gap:1.25rem;
+}
 .grid{
   display:grid; grid-template-columns:repeat(5, var(--cell)); grid-template-rows:repeat(5, var(--cell));
   gap:4px; margin-top:.5rem;
@@ -95,10 +102,66 @@ body{
   background:#fff; color:#000; border:2px solid #fff;
   position:relative; font-size:1.2rem; font-weight:700; user-select:none;
 }
+.cell.hint-green{ background:#1f8a3b !important; color:#fff !important; }
+.cell.hint-green .num{ color:#fff; }
+.cell.hint-pulse{ animation:hintPulse .6s ease-in-out 3; }
 .cell.block{ background:#000; border-color:#000; color:#000; }
 .cell .num{ position:absolute; top:2px; left:4px; font-size:.65rem; color:#000; font-weight:700; }
 .cell.active{ animation:flash 1s infinite alternate; outline:2px solid #fff; }
 @keyframes flash { 0%{background:#fff;color:#000} 100%{background:#000;color:#fff} }
+@keyframes hintPulse {
+  0%{ box-shadow:0 0 0 0 rgba(31,138,59,.7); }
+  70%{ box-shadow:0 0 0 8px rgba(31,138,59,0); }
+  100%{ box-shadow:0 0 0 0 rgba(31,138,59,0); }
+}
+
+/* NEW FEATURE — Hint panel display */
+.hint-panel{
+  min-width:160px;
+  border:2px solid var(--fg);
+  border-radius:12px;
+  padding:.75rem;
+  background:#111;
+  font-size:.95rem;
+  display:flex;
+  flex-direction:column;
+  gap:.5rem;
+}
+.hint-panel-header{
+  font-weight:700;
+  text-transform:uppercase;
+  font-size:.85rem;
+  letter-spacing:.05em;
+  opacity:.8;
+}
+.hint-panel-content{ display:flex; flex-direction:column; gap:.5rem; }
+.hint-panel[hidden]{ display:none !important; }
+.hint-item{
+  display:block;
+  width:100%;
+  border:1px solid #333;
+  border-radius:10px;
+  padding:.5rem .6rem;
+  background:#1a1a1a;
+  text-align:left;
+  cursor:pointer;
+  transition:background .2s, border-color .2s;
+  color:var(--fg);
+  font:inherit;
+}
+.hint-item:hover,
+.hint-item:focus-visible{
+  background:#232323;
+  border-color:#3c3c3c;
+  outline:none;
+}
+.hint-item-type{ font-weight:600; display:block; margin-bottom:.25rem; }
+.hint-item-text{ font-size:.9rem; line-height:1.3; opacity:.85; }
+
+@media (max-width: 720px){
+  .grid-hint-wrap{ flex-direction:column; align-items:center; }
+  .hint-panel{ width:100%; }
+}
 
 /* Clue panel */
 .clue-panel{ width:min(560px, 92vw); }
@@ -187,3 +250,41 @@ body{
   background:#333; color:#fff;
   padding:.4rem .8rem; border-radius:8px; font-size:.9rem;
 }
+
+/* NEW FEATURE — Clue rating popup */
+.rating-popup{
+  position:fixed;
+  left:50%;
+  bottom:2.5rem;
+  transform:translateX(-50%);
+  background:#111;
+  border:2px solid var(--fg);
+  border-radius:14px;
+  padding:.75rem 1.5rem;
+  display:flex;
+  flex-direction:column;
+  gap:.5rem;
+  align-items:center;
+  color:var(--fg);
+  opacity:0;
+  pointer-events:none;
+  transition:opacity .3s ease;
+  z-index:20;
+}
+.rating-popup.show{
+  opacity:1;
+  pointer-events:auto;
+}
+.rating-message{ font-size:.95rem; text-align:center; }
+.rating-stars{ display:flex; gap:.35rem; }
+.rating-star{
+  background:transparent;
+  border:0;
+  color:#f6c343;
+  font-size:1.4rem;
+  cursor:pointer;
+  padding:.15rem;
+  transition:transform .15s ease;
+}
+.rating-star:active{ transform:scale(.9); }
+.rating-popup.fade-out{ opacity:0; pointer-events:none; }

@@ -24,8 +24,15 @@
       </div>
     </div>
 
-    <!-- Grid -->
-    <div id="grid" class="grid" role="application" aria-label="5 by 5 crossword grid"></div>
+    <!-- Grid and hint panel -->
+    <!-- NEW FEATURE — Hint panel display -->
+    <div class="grid-hint-wrap">
+      <div id="grid" class="grid" role="application" aria-label="5 by 5 crossword grid"></div>
+      <aside id="hintPanel" class="hint-panel" aria-live="polite" hidden>
+        <div class="hint-panel-header">Hints</div>
+        <div id="hintPanelContent" class="hint-panel-content"></div>
+      </aside>
+    </div>
 
     <!-- Clue panel (stays between grid and bottom buttons) -->
     <div id="cluePanel" class="clue-panel">
@@ -84,6 +91,18 @@
   <div id="copyToast" class="toast" hidden>Copied</div>
 
   <div id="fireworks" class="fireworks" aria-hidden="true"></div>
+
+  <!-- NEW FEATURE — Clue rating popup -->
+  <div id="ratingPopup" class="rating-popup" hidden>
+    <div class="rating-message">Rate this clue out of 5 stars ⭐⭐⭐⭐⭐</div>
+    <div class="rating-stars" role="group" aria-label="Rate this clue">
+      <button type="button" class="rating-star" data-rating="1" aria-label="1 star">★</button>
+      <button type="button" class="rating-star" data-rating="2" aria-label="2 stars">★</button>
+      <button type="button" class="rating-star" data-rating="3" aria-label="3 stars">★</button>
+      <button type="button" class="rating-star" data-rating="4" aria-label="4 stars">★</button>
+      <button type="button" class="rating-star" data-rating="5" aria-label="5 stars">★</button>
+    </div>
+  </div>
 
   <!-- Bust browser cache by adding a version query string -->
   <script src="script.js"></script>
