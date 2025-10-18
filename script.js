@@ -59,6 +59,16 @@ let currentPuzzleIndex = 0;
 let wordplayHoverActive = false;
 let wordplayHighlightEntry = null;
 
+function focusMobileEntryInput(){
+  if (!mobileInput) return;
+  if (document.activeElement === mobileInput) return;
+  try {
+    mobileInput.focus({ preventScroll: true });
+  } catch (err) {
+    mobileInput.focus();
+  }
+}
+
 const TIP = {
   acrostic: 'Take first letters.',
   hidden: 'Look within the fodder.',
@@ -447,6 +457,7 @@ function setCurrentEntry(ent, fromCellKey=null){
   activeCellKey = key(cell.r,cell.c);
   renderLetters();
   if (wordplayHoverActive) applyWordplayHighlight(currentEntry);
+  focusMobileEntryInput();
 }
 
 function highlightActive(){
