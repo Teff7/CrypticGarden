@@ -10,6 +10,10 @@ const clueTextEl = document.getElementById('clueText');
 const puzzleSelect = document.getElementById('puzzleSelect');
 const puzzleDate = document.getElementById('puzzleDate');
 const mobileInput = document.getElementById('mobileInput');
+const hintPanel = document.getElementById('hintPanel');
+const hintContent = document.getElementById('hintContent');
+const ratingPopup = document.getElementById('ratingPopup');
+const ratingStars = ratingPopup ? ratingPopup.querySelectorAll('.rating-star') : [];
 
 // Top menu removed
 const topMenuWrap = document.getElementById('topMenuWrap');
@@ -43,6 +47,10 @@ const shareClose = document.getElementById('shareClose');
 const shareGrid = document.getElementById('shareGrid');
 const btnCopyResult = document.getElementById('copyResult');
 const copyToast = document.getElementById('copyToast');
+
+let ratingHideTimer = null;
+let ratingCleanupTimer = null;
+const RATING_STORAGE_KEY = 'clueRatings';
 
 let puzzle = null;
 let grid = [];
@@ -105,10 +113,28 @@ const BASE_COLOUR_VALUES = {
   purple: '#c99cff'
 };
 const GREY_VALUE = '#bbb';
+const HINT_GREEN_VALUE = '#1f8a3b';
 // Temporary highlight colour for other cells in the active entry
 const ACTIVE_ENTRY_BG = '#3c3c3c';
 
 function key(r,c){ return `${r},${c}`; }
+
+// NEW FEATURE — Mobile keyboard focus fix
+function focusMobileInput(){
+  if (!mobileInput) return;
+  if (document.activeElement === mobileInput) return;
+  try {
+    mobileInput.focus({ preventScroll: true });
+  } catch (err){
+    mobileInput.focus();
+  }
+}
+
+function blurMobileInput(){
+  if (!mobileInput) return;
+  if (document.activeElement !== mobileInput) return;
+  mobileInput.blur();
+}
 
 // ----- Grid build -----
 function buildGrid(){
@@ -130,6 +156,7 @@ function buildGrid(){
         baseColour: 'none',
         // isGrey marks whether a hint has touched this cell.
         isGrey: false,
+        hintGreen: false,
 
         // locked letters cannot be overwritten once the clue is solved.
         locked: false,
@@ -172,7 +199,8 @@ function placeEntries(){
     cells: [],
     iActive: 0,
     // Track whether the clue has been solved.
-    status: 'unsolved'
+    status: 'unsolved',
+    hintState: null
   }));
 
   entries.forEach(ent => {
@@ -226,6 +254,12 @@ function onClueSolved(clueId){
   }
   renderLetters();
 
+  // NEW FEATURE — Clue rating popup
+  showRatingPopup(ent);
+
+  // Ensure hint panel reflects solved status when returning later.
+  if (currentEntry && currentEntry.id === ent.id) updateHintPanel(ent);
+
   if (!puzzleFinished && currentEntry && currentEntry.id === ent.id){
     const idx = entries.indexOf(ent);
     const next = findNextUnsolvedEntry(idx);
@@ -234,16 +268,172 @@ function onClueSolved(clueId){
 
 }
 
-// Called when a hint is used on a clue.  For non reveal-letter hints we simply
-// grey out a random cell.  For reveal-letter hints we also fill in the correct
-// letter for one not-yet-correct cell.
+// NEW FEATURE — Hint panel display
+function ensureHintState(ent){
+  if (!ent.hintState){
+    ent.hintState = {
+      definition: { used: false, cells: [] },
+      letter: { used: false, cells: [] },
+      trick: { used: false, cells: [] }
+    };
+  }
+  return ent.hintState;
+}
+
+// NEW FEATURE — Hint colouring logic
+function addHintCells(bucket, cells){
+  cells.forEach(cell => {
+    if (!bucket.cells.includes(cell)) bucket.cells.push(cell);
+  });
+}
+
+function selectHintCells(ent, bucket){
+  const already = bucket.cells.slice();
+  const pool = ent.cells.filter(cell => !already.includes(cell));
+  const fallbackPool = pool.length ? pool : ent.cells.slice();
+  if (!fallbackPool.length) return [];
+  const max = Math.min(3, fallbackPool.length);
+  const count = Math.max(1, Math.min(max, Math.floor(Math.random() * max) + 1));
+  const chosen = [];
+  const temp = fallbackPool.slice();
+  while (chosen.length < count && temp.length){
+    const idx = Math.floor(Math.random() * temp.length);
+    chosen.push(temp.splice(idx, 1)[0]);
+  }
+  return chosen;
+}
+
+function markCellsGreen(cells){
+  cells.forEach(cell => {
+    cell.hintGreen = true;
+    if (cell.isGrey) cell.isGrey = false;
+  });
+}
+
+function buildDefinitionHint(ent){
+  const segs = (ent.clue && ent.clue.segments) || [];
+  const defs = segs
+    .filter(seg => seg.type === 'definition')
+    .map(seg => seg && seg.text != null ? String(seg.text).trim() : '')
+    .filter(Boolean);
+  if (defs.length) return defs.join(' / ');
+  const surface = ent.clue && ent.clue.surface;
+  return surface || 'Definition not available.';
+}
+
+function buildTrickHint(ent){
+  const segs = (ent.clue && ent.clue.segments) || [];
+  const annotated = segs
+    .filter(seg => seg && seg.tooltip)
+    .map(seg => ({ text: seg.text != null ? String(seg.text).trim() : 'Indicator', tip: String(seg.tooltip).trim() }))
+    .filter(seg => seg.tip);
+  if (!annotated.length) return 'Look at the wordplay structure for this clue.';
+  return annotated.map(seg => `${seg.text}: ${seg.tip}`).join(' • ');
+}
+
+function describeRevealedLetters(ent){
+  const state = ent.hintState && ent.hintState.letter;
+  if (!state || !state.cells.length) return '';
+  const parts = state.cells.map(cell => {
+    const idx = ent.cells.indexOf(cell);
+    const displayIndex = idx >= 0 ? idx + 1 : '';
+    const letter = cell.letter || ent.answer[idx] || '?';
+    return displayIndex ? `(${displayIndex}) ${letter}` : letter;
+  });
+  return parts.join(', ');
+}
+
+function pulseCells(cells){
+  cells.forEach(cell => {
+    if (!cell || !cell.el) return;
+    cell.el.classList.remove('hint-pulse');
+    void cell.el.offsetWidth;
+    cell.el.classList.add('hint-pulse');
+    const handler = () => {
+      cell.el.classList.remove('hint-pulse');
+      cell.el.removeEventListener('animationend', handler);
+    };
+    cell.el.addEventListener('animationend', handler);
+  });
+}
+
+function attachHintHover(el, cells){
+  if (!el || !cells || !cells.length) return;
+  const trigger = () => pulseCells(cells);
+  el.addEventListener('mouseenter', trigger);
+  el.addEventListener('focus', trigger);
+  el.addEventListener('touchstart', trigger, { passive: true });
+}
+
+function updateHintPanel(ent){
+  if (!hintPanel || !hintContent){
+    return;
+  }
+  hintContent.innerHTML = '';
+  if (!ent || !ent.hintState){
+    hintPanel.hidden = true;
+    return;
+  }
+
+  const { definition, letter, trick } = ent.hintState;
+  let shown = 0;
+
+  if (definition && definition.used){
+    const item = document.createElement('div');
+    item.className = 'hint-item';
+    item.tabIndex = 0;
+    const title = document.createElement('strong');
+    title.textContent = 'Definition';
+    const body = document.createElement('div');
+    body.textContent = buildDefinitionHint(ent);
+    item.appendChild(title);
+    item.appendChild(body);
+    attachHintHover(item, definition.cells);
+    hintContent.appendChild(item);
+    shown++;
+  }
+
+  if (letter && letter.used && letter.cells.length){
+    const item = document.createElement('div');
+    item.className = 'hint-item';
+    item.tabIndex = 0;
+    const title = document.createElement('strong');
+    title.textContent = 'Revealed letters';
+    const body = document.createElement('div');
+    const desc = describeRevealedLetters(ent);
+    body.textContent = desc || 'Look for the green squares in the grid.';
+    item.appendChild(title);
+    item.appendChild(body);
+    attachHintHover(item, letter.cells);
+    hintContent.appendChild(item);
+    shown++;
+  }
+
+  if (trick && trick.used){
+    const item = document.createElement('div');
+    item.className = 'hint-item';
+    item.tabIndex = 0;
+    const title = document.createElement('strong');
+    title.textContent = 'Reveal the trick';
+    const body = document.createElement('div');
+    body.textContent = buildTrickHint(ent);
+    item.appendChild(title);
+    item.appendChild(body);
+    attachHintHover(item, trick.cells);
+    hintContent.appendChild(item);
+    shown++;
+  }
+
+  hintPanel.hidden = shown === 0;
+}
+
+// Called when a hint is used on a clue.
 function onHintUsed(clueId, type){
   const ent = entries.find(e => e.id === clueId);
 
   if (!ent || ent.status === 'solved') return;
 
-  if (!ent) return;
-
+  const state = ensureHintState(ent);
 
   if (type === 'reveal-letter'){
     const candidates = ent.cells
@@ -252,7 +442,10 @@ function onHintUsed(clueId, type){
     if (!candidates.length) return;
     const { cell, idx } = candidates[Math.floor(Math.random()*candidates.length)];
     cell.letter = ent.answer[idx];
-    cell.isGrey = true;
+    cell.hintGreen = true;
+    cell.isGrey = false;
+    state.letter.used = true;
+    addHintCells(state.letter, [cell]);
     ent.iActive = idx;
     activeCellKey = key(cell.r, cell.c);
 
@@ -260,17 +453,94 @@ function onHintUsed(clueId, type){
     // letter completes another clue.
     cell.entries.forEach(checkIfSolved);
 
-  } else {
-    const candidates = ent.cells.filter(c => !c.isGrey);
-    const cell = (candidates.length
-      ? candidates[Math.floor(Math.random()*candidates.length)]
-      : ent.cells[Math.floor(Math.random()*ent.cells.length)]);
-    cell.isGrey = true;
+  } else if (type === 'definition' || type === 'trick' || type === 'analyse'){
+    const isDefinition = type === 'definition';
+    const bucket = isDefinition ? state.definition : state.trick;
+    if (!bucket.used){
+      bucket.used = true;
+      const chosen = selectHintCells(ent, bucket);
+      addHintCells(bucket, chosen);
+      markCellsGreen(chosen);
+    }
+    if (isDefinition && clueTextEl) clueTextEl.classList.add('help-on');
+    if (!isDefinition && clueTextEl) clueTextEl.classList.add('annot-on');
 
-    // Greying doesn't change letters, but the clue might already be correct.
+    // Greening doesn't change letters, but the clue might already be correct.
     checkIfSolved(ent);
   }
   renderLetters();
+  if (currentEntry && currentEntry.id === ent.id) updateHintPanel(ent);
+}
+
+// NEW FEATURE — Clue rating popup
+function getStoredRatings(){
+  if (typeof localStorage === 'undefined') return {};
+  try {
+    const raw = localStorage.getItem(RATING_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch (err){
+    return {};
+  }
+}
+
+function saveRating(clueId, rating){
+  if (typeof localStorage === 'undefined') return;
+  const map = getStoredRatings();
+  map[clueId] = rating;
+  try {
+    localStorage.setItem(RATING_STORAGE_KEY, JSON.stringify(map));
+  } catch (err){
+    // ignore storage errors
+  }
+}
+
+function showRatingPopup(ent){
+  if (!ratingPopup || !ent) return;
+  const stored = getStoredRatings();
+  if (stored[ent.id]) return;
+  if (ratingHideTimer){
+    clearTimeout(ratingHideTimer);
+    ratingHideTimer = null;
+  }
+  if (ratingCleanupTimer){
+    clearTimeout(ratingCleanupTimer);
+    ratingCleanupTimer = null;
+  }
+  ratingPopup.hidden = false;
+  ratingPopup.dataset.clueId = ent.id;
+  ratingPopup.classList.add('show');
+}
+
+function scheduleRatingHide(){
+  if (!ratingPopup) return;
+  if (ratingHideTimer){
+    clearTimeout(ratingHideTimer);
+    ratingHideTimer = null;
+  }
+  if (ratingCleanupTimer){
+    clearTimeout(ratingCleanupTimer);
+    ratingCleanupTimer = null;
+  }
+  ratingHideTimer = setTimeout(() => {
+    ratingPopup.classList.remove('show');
+    ratingCleanupTimer = setTimeout(() => {
+      ratingPopup.hidden = true;
+      delete ratingPopup.dataset.clueId;
+    }, 250);
+  }, 2000);
+}
+
+function handleRatingSelection(score){
+  if (!ratingPopup) return;
+  const value = Number(score);
+  if (!Number.isFinite(value)) return;
+  const clueId = ratingPopup.dataset.clueId;
+  if (!clueId) return;
+  saveRating(clueId, value);
+  scheduleRatingHide();
+  setTimeout(() => focusMobileInput(), 0);
 }
 
 function checkIfSolved(ent){
@@ -311,6 +581,7 @@ function renderSharePreview(){
       let bg = '#000';
       if (!cell.block){
         if (cell.isGrey) bg = GREY_VALUE;
+        else if (cell.hintGreen) bg = HINT_GREEN_VALUE;
         else if (cell.baseColour !== 'none') bg = BASE_COLOUR_VALUES[cell.baseColour];
         else bg = '#fff';
       }
@@ -331,6 +602,7 @@ function buildShareText(){
       let emoji = '⬛';
       if (!cell.block){
         if (cell.isGrey) emoji = '⬜';
+        else if (cell.hintGreen) emoji = '🟩';
         else if (cell.baseColour === 'green') emoji = '🟩';
         else if (cell.baseColour === 'yellow') emoji = '🟨';
         else if (cell.baseColour === 'purple') emoji = '🟪';
@@ -387,6 +659,14 @@ function renderClue(ent){
   clueHeaderEl.textContent = `${num} ${dirLabel}`;  // “1 Across” / “1 Down”
   clueTextEl.className = 'clue';
   clueTextEl.innerHTML = html;
+  if (ent.hintState){
+    if (ent.hintState.definition && ent.hintState.definition.used){
+      clueTextEl.classList.add('help-on');
+    }
+    if (ent.hintState.trick && ent.hintState.trick.used){
+      clueTextEl.classList.add('annot-on');
+    }
+  }
 }
 
 function renderLetters(){
@@ -396,14 +676,23 @@ function renderLetters(){
       cell.el.removeChild(n);
     });
     cell.el.classList.remove('active');
+    cell.el.classList.remove('hint-pulse');
+    cell.el.classList.toggle('hint-green', !!cell.hintGreen);
     if (cell.block) return;
 
     // Apply colouring rules.  Grey overlay takes precedence over baseColour.
     let bg = '#fff';
-    if (cell.isGrey) bg = GREY_VALUE;
-    else if (cell.baseColour !== 'none') bg = BASE_COLOUR_VALUES[cell.baseColour];
+    let fg = '#000';
+    if (cell.isGrey) {
+      bg = GREY_VALUE;
+    } else if (cell.hintGreen){
+      bg = HINT_GREEN_VALUE;
+      fg = '#fff';
+    } else if (cell.baseColour !== 'none') {
+      bg = BASE_COLOUR_VALUES[cell.baseColour];
+    }
     cell.el.style.background = bg;
-    cell.el.style.color = '#000'; // keep text legible over grey
+    cell.el.style.color = fg; // adjust for green hint colouring
   });
 
   grid.flat().forEach(cell => {
@@ -424,7 +713,10 @@ function renderLetters(){
 
 function setCurrentEntry(ent, fromCellKey=null){
   currentEntry = ent;
-  if (!ent) return;
+  if (!ent){
+    updateHintPanel(null);
+    return;
+  }
   renderClue(ent);
   if (fromCellKey){
     const i = ent.cells.findIndex(c => key(c.r,c.c)===fromCellKey);
@@ -438,13 +730,28 @@ function setCurrentEntry(ent, fromCellKey=null){
   const cell = ent.cells[ent.iActive];
   activeCellKey = key(cell.r,cell.c);
   renderLetters();
+  updateHintPanel(currentEntry);
+  focusMobileInput();
 }
 
 function highlightActive(){
   if (!currentEntry) return;
   const active = currentEntry.cells[currentEntry.iActive];
   currentEntry.cells.forEach(c => {
-    if (c !== active) c.el.style.background = ACTIVE_ENTRY_BG;
+    if (c === active) return;
+    if (c.hintGreen){
+      c.el.style.background = HINT_GREEN_VALUE;
+      c.el.style.color = '#fff';
+    } else if (c.isGrey){
+      c.el.style.background = GREY_VALUE;
+      c.el.style.color = '#000';
+    } else if (c.baseColour !== 'none'){
+      c.el.style.background = BASE_COLOUR_VALUES[c.baseColour];
+      c.el.style.color = '#000';
+    } else {
+      c.el.style.background = ACTIVE_ENTRY_BG;
+      c.el.style.color = '#fff';
+    }
   });
   if (active) active.el.classList.add('active');
 }
@@ -589,8 +896,7 @@ function setupHandlers(){
       closeHintDropdown();
       return;
     }
-    const shown = clueTextEl.classList.toggle('help-on');
-    if (shown) onHintUsed(currentEntry.id, 'definition');
+    onHintUsed(currentEntry.id, 'definition');
     closeHintDropdown();
   });
   if (btnHintLetter) btnHintLetter.addEventListener('click', () => {
@@ -606,8 +912,7 @@ function setupHandlers(){
       closeHintDropdown();
       return;
     }
-    const shown = clueTextEl.classList.toggle('annot-on');
-    if (shown) onHintUsed(currentEntry.id, 'analyse');
+    onHintUsed(currentEntry.id, 'trick');
     closeHintDropdown();
   });
 
@@ -673,6 +978,18 @@ function setupHandlers(){
         if (menuPanel) menuPanel.setAttribute('aria-hidden','true');
       }
     }
+
+    // NEW FEATURE — Mobile keyboard focus fix
+    if (mobileInput){
+      const isElement = typeof Element !== 'undefined' && t instanceof Element;
+      const element = isElement ? t : (t && t.parentElement);
+      const cellEl = element ? element.closest('.cell') : null;
+      if (gridEl && element && gridEl.contains(element) && cellEl && !cellEl.classList.contains('block')){
+        focusMobileInput();
+      } else if (element !== mobileInput){
+        blurMobileInput();
+      }
+    }
   });
 
   // Back (welcome removed) — guard
@@ -699,6 +1016,14 @@ function setupHandlers(){
     else if (e.key === 'ArrowUp'){ e.preventDefault(); moveCursor(0,-1); }
     else if (e.key === 'ArrowDown'){ e.preventDefault(); moveCursor(0,1); }
   });
+
+  // NEW FEATURE — Clue rating popup
+  ratingStars.forEach(star => {
+    star.addEventListener('click', () => {
+      const score = Number(star.dataset.score);
+      handleRatingSelection(score);
+    });
+  });
 }
 function focusFirstCell(){
   const start = key(0,0);
@@ -713,10 +1038,12 @@ function focusFirstCell(){
 function restartGame(){
   entries.forEach(ent => {
     ent.status = 'unsolved';
+    ent.hintState = null;
     ent.cells.forEach(c => {
       c.letter = '';
       c.baseColour = 'none';
       c.isGrey = false;
+      c.hintGreen = false;
 
       c.locked = false;
     });
@@ -728,6 +1055,17 @@ function restartGame(){
   if (fireworks) fireworks.classList.remove('on');
 
   if (clueTextEl) clueTextEl.classList.remove('help-on', 'annot-on');
+  if (hintPanel){
+    hintPanel.hidden = true;
+    if (hintContent) hintContent.innerHTML = '';
+  }
+  if (ratingPopup){
+    ratingPopup.classList.remove('show');
+    ratingPopup.hidden = true;
+    delete ratingPopup.dataset.clueId;
+  }
+  if (ratingHideTimer){ clearTimeout(ratingHideTimer); ratingHideTimer = null; }
+  if (ratingCleanupTimer){ clearTimeout(ratingCleanupTimer); ratingCleanupTimer = null; }
 
   focusFirstCell();
   renderLetters();
@@ -977,11 +1315,22 @@ function applyPuzzle(data){
   }
   if (clueHeaderEl) clueHeaderEl.textContent = '—';
   closeHintDropdown();
+  if (hintPanel){
+    hintPanel.hidden = true;
+    if (hintContent) hintContent.innerHTML = '';
+  }
+  if (ratingPopup){
+    ratingPopup.classList.remove('show');
+    ratingPopup.hidden = true;
+    delete ratingPopup.dataset.clueId;
+  }
+  if (ratingHideTimer){ clearTimeout(ratingHideTimer); ratingHideTimer = null; }
+  if (ratingCleanupTimer){ clearTimeout(ratingCleanupTimer); ratingCleanupTimer = null; }
 
   buildGrid();
   placeEntries();
   focusFirstCell();
-  if (mobileInput) mobileInput.focus();
+  focusMobileInput();
 }
 
 function useFallbackPuzzle(){
