@@ -10,6 +10,7 @@ const clueTextEl = document.getElementById('clueText');
 const puzzleSelect = document.getElementById('puzzleSelect');
 const puzzleDate = document.getElementById('puzzleDate');
 const mobileInput = document.getElementById('mobileInput');
+const mobileKeyboard = document.getElementById('mobileKeyboard');
 
 // Top menu removed
 const topMenuWrap = document.getElementById('topMenuWrap');
@@ -43,6 +44,8 @@ const shareClose = document.getElementById('shareClose');
 const shareGrid = document.getElementById('shareGrid');
 const btnCopyResult = document.getElementById('copyResult');
 const copyToast = document.getElementById('copyToast');
+
+const mobileBehaviours = createMobileBehaviours();
 
 let puzzle = null;
 let grid = [];
@@ -424,7 +427,10 @@ function renderLetters(){
 
 function setCurrentEntry(ent, fromCellKey=null){
   currentEntry = ent;
-  if (!ent) return;
+  if (!ent){
+    mobileBehaviours.onEntryCleared();
+    return;
+  }
   renderClue(ent);
   if (fromCellKey){
     const i = ent.cells.findIndex(c => key(c.r,c.c)===fromCellKey);
@@ -438,6 +444,7 @@ function setCurrentEntry(ent, fromCellKey=null){
   const cell = ent.cells[ent.iActive];
   activeCellKey = key(cell.r,cell.c);
   renderLetters();
+  mobileBehaviours.onEntryFocus();
 }
 
 function highlightActive(){
@@ -554,6 +561,7 @@ function closeHintDropdown(){
   if (hintDropdown) hintDropdown.classList.remove('open');
   if (btnHints) btnHints.setAttribute('aria-expanded', 'false');
   if (hintMenu) hintMenu.setAttribute('aria-hidden', 'true');
+  mobileBehaviours.onHintMenuClosed();
 }
 
 // ----- Help & hints & misc -----
@@ -582,6 +590,7 @@ function setupHandlers(){
       btnHints.setAttribute('aria-expanded', 'true');
       if (hintMenu) hintMenu.setAttribute('aria-hidden', 'false');
       if (hintDropdown) hintDropdown.classList.add('open');
+      mobileBehaviours.onHintMenuOpened();
     }
   });
   if (btnHintDef) btnHintDef.addEventListener('click', () => {
@@ -592,6 +601,7 @@ function setupHandlers(){
     const shown = clueTextEl.classList.toggle('help-on');
     if (shown) onHintUsed(currentEntry.id, 'definition');
     closeHintDropdown();
+    mobileBehaviours.onHintSelected();
   });
   if (btnHintLetter) btnHintLetter.addEventListener('click', () => {
     if (!currentEntry){
@@ -600,6 +610,7 @@ function setupHandlers(){
     }
     onHintUsed(currentEntry.id, 'reveal-letter');
     closeHintDropdown();
+    mobileBehaviours.onHintSelected();
   });
   if (btnHintAnalyse) btnHintAnalyse.addEventListener('click', () => {
     if (!currentEntry){
@@ -609,6 +620,7 @@ function setupHandlers(){
     const shown = clueTextEl.classList.toggle('annot-on');
     if (shown) onHintUsed(currentEntry.id, 'analyse');
     closeHintDropdown();
+    mobileBehaviours.onHintSelected();
   });
 
   // Top Menu dropdown — removed; guards keep this safe if elements don't exist
@@ -981,7 +993,7 @@ function applyPuzzle(data){
   buildGrid();
   placeEntries();
   focusFirstCell();
-  if (mobileInput) mobileInput.focus();
+  if (mobileInput && !mobileBehaviours.isActive()) mobileInput.focus();
 }
 
 function useFallbackPuzzle(){
@@ -1003,8 +1015,226 @@ function useFallbackPuzzle(){
   loadPuzzleByIndex(0);
 }
 
+function createMobileBehaviours(){
+  const noop = {
+    isActive: () => false,
+    updateState: () => {},
+    onEntryFocus: () => {},
+    onEntryCleared: () => {},
+    onHintMenuOpened: () => {},
+    onHintMenuClosed: () => {},
+    onHintSelected: () => {},
+    hideKeyboard: () => {}
+  };
+  if (!mobileKeyboard) return noop;
+
+  const widthQuery = window.matchMedia('(max-width: 768px)');
+  const pointerQueries = [];
+  ['(pointer: coarse)', '(any-pointer: coarse)'].forEach(q => {
+    try {
+      const mq = window.matchMedia(q);
+      if (mq && mq.media !== 'not all') pointerQueries.push(mq);
+    } catch (err) {
+      // Ignore unsupported media query strings.
+    }
+  });
+
+  let active = false;
+  let keyboardVisible = false;
+  let hintMenuOpen = false;
+  let keyboardBuilt = false;
+
+  const body = document.body;
+
+  const addMediaListener = (mq, handler) => {
+    if (!mq) return;
+    if (typeof mq.addEventListener === 'function') mq.addEventListener('change', handler);
+    else if (typeof mq.addListener === 'function') mq.addListener(handler);
+  };
+
+  const isTouchCapable = () => {
+    if (pointerQueries.some(q => q.matches)) return true;
+    if ('ontouchstart' in window) return true;
+    if (typeof navigator !== 'undefined' && typeof navigator.maxTouchPoints === 'number' && navigator.maxTouchPoints > 0) return true;
+    return false;
+  };
+
+  const shouldEnable = () => widthQuery.matches && isTouchCapable();
+
+  const syncKeyboardHeight = () => {
+    if (!keyboardVisible) return;
+    const height = mobileKeyboard.offsetHeight;
+    body.style.setProperty('--mobile-keyboard-height', `${height}px`);
+  };
+
+  const hideKeyboardInternal = (opts = {}) => {
+    if (!keyboardVisible) return;
+    keyboardVisible = false;
+    mobileKeyboard.classList.remove('visible');
+    mobileKeyboard.hidden = true;
+    mobileKeyboard.setAttribute('aria-hidden', 'true');
+    body.classList.remove('mobile-keyboard-open');
+    body.style.removeProperty('--mobile-keyboard-height');
+    if (!opts.preserveHintState) hintMenuOpen = false;
+  };
+
+  const showKeyboard = () => {
+    if (!active || hintMenuOpen || !currentEntry) return;
+    if (!keyboardBuilt) buildKeyboard();
+    if (keyboardVisible){
+      syncKeyboardHeight();
+      return;
+    }
+    keyboardVisible = true;
+    mobileKeyboard.hidden = false;
+    mobileKeyboard.classList.add('visible');
+    mobileKeyboard.setAttribute('aria-hidden', 'false');
+    body.classList.add('mobile-keyboard-open');
+    syncKeyboardHeight();
+  };
+
+  const handleKeyboardClick = (e) => {
+    const btn = e.target.closest('button[data-key], button[data-action]');
+    if (!btn) return;
+    e.preventDefault();
+    const action = btn.dataset.action;
+    if (action === 'delete'){ backspace(); return; }
+    if (action === 'submit'){ submitAnswer(); return; }
+    if (action === 'close'){ hideKeyboardInternal(); return; }
+    const keyVal = btn.dataset.key;
+    if (keyVal) typeChar(keyVal);
+  };
+
+  const buildKeyboard = () => {
+    if (keyboardBuilt) return;
+    keyboardBuilt = true;
+    mobileKeyboard.innerHTML = '';
+    const layout = [
+      ['Q','W','E','R','T','Y','U','I','O','P'],
+      ['A','S','D','F','G','H','J','K','L'],
+      ['Z','X','C','V','B','N','M']
+    ];
+    layout.forEach(row => {
+      const rowEl = document.createElement('div');
+      rowEl.className = 'mobile-keyboard-row';
+      row.forEach(letter => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.textContent = letter;
+        btn.dataset.key = letter;
+        rowEl.appendChild(btn);
+      });
+      mobileKeyboard.appendChild(rowEl);
+    });
+    const controls = document.createElement('div');
+    controls.className = 'mobile-keyboard-row controls';
+
+    const backspaceBtn = document.createElement('button');
+    backspaceBtn.type = 'button';
+    backspaceBtn.dataset.action = 'delete';
+    backspaceBtn.classList.add('delete-key');
+    backspaceBtn.setAttribute('aria-label', 'Backspace');
+    backspaceBtn.textContent = '⌫';
+
+    const submitBtn = document.createElement('button');
+    submitBtn.type = 'button';
+    submitBtn.dataset.action = 'submit';
+    submitBtn.classList.add('action-key');
+    submitBtn.setAttribute('aria-label', 'Submit answer');
+    submitBtn.textContent = 'Enter';
+
+    const closeBtn = document.createElement('button');
+    closeBtn.type = 'button';
+    closeBtn.dataset.action = 'close';
+    closeBtn.classList.add('close-keyboard');
+    closeBtn.setAttribute('aria-label', 'Hide keyboard');
+    closeBtn.textContent = 'Hide';
+
+    controls.append(backspaceBtn, submitBtn, closeBtn);
+    mobileKeyboard.appendChild(controls);
+
+    mobileKeyboard.addEventListener('click', handleKeyboardClick);
+  };
+
+  const handleDocumentClick = (e) => {
+    if (!active || !keyboardVisible) return;
+    const target = e.target;
+    if (mobileKeyboard.contains(target)) return;
+    if (gridEl && gridEl.contains(target)) return;
+    if (hintDropdown && hintDropdown.contains(target)) return;
+    hideKeyboardInternal();
+  };
+
+  const enable = () => {
+    if (active) return;
+    active = true;
+    body.classList.add('mobile-touch');
+    hintMenuOpen = false;
+    hideKeyboardInternal();
+    buildKeyboard();
+    mobileKeyboard.hidden = true;
+    mobileKeyboard.setAttribute('aria-hidden', 'true');
+    mobileKeyboard.classList.remove('visible');
+    if (mobileInput) mobileInput.blur();
+    document.addEventListener('click', handleDocumentClick);
+    window.addEventListener('resize', syncKeyboardHeight);
+  };
+
+  const disable = () => {
+    if (!active) return;
+    hideKeyboardInternal();
+    active = false;
+    hintMenuOpen = false;
+    body.classList.remove('mobile-touch', 'mobile-keyboard-open');
+    body.style.removeProperty('--mobile-keyboard-height');
+    document.removeEventListener('click', handleDocumentClick);
+    window.removeEventListener('resize', syncKeyboardHeight);
+  };
+
+  const evaluate = () => {
+    if (shouldEnable()) enable(); else disable();
+  };
+
+  const orientationHandler = () => {
+    setTimeout(() => {
+      syncKeyboardHeight();
+      evaluate();
+    }, 200);
+  };
+
+  addMediaListener(widthQuery, evaluate);
+  pointerQueries.forEach(q => addMediaListener(q, evaluate));
+  window.addEventListener('orientationchange', orientationHandler);
+
+  // Initial state
+  evaluate();
+
+  return {
+    isActive: () => active,
+    updateState: evaluate,
+    onEntryFocus: () => { if (active) showKeyboard(); },
+    onEntryCleared: () => { if (active) hideKeyboardInternal(); },
+    onHintMenuOpened: () => {
+      if (!active) return;
+      hintMenuOpen = true;
+      hideKeyboardInternal({ preserveHintState: true });
+    },
+    onHintMenuClosed: () => {
+      if (!active) return;
+      hintMenuOpen = false;
+    },
+    onHintSelected: () => {
+      if (!active) return;
+      hintMenuOpen = false;
+      showKeyboard();
+    },
+    hideKeyboard: () => { if (active) hideKeyboardInternal(); }
+  };
+}
+
 // ----- Boot -----
 window.addEventListener('load', () => {
+  mobileBehaviours.updateState();
   setupHandlers();
 
   fetch(FILE)

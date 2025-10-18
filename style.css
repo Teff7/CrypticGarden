@@ -101,7 +101,14 @@ body{
 @keyframes flash { 0%{background:#fff;color:#000} 100%{background:#000;color:#fff} }
 
 /* Clue panel */
-.clue-panel{ width:min(560px, 92vw); }
+.clue-section{
+  width:min(560px, 92vw);
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:.75rem;
+}
+.clue-panel{ width:100%; }
 .clue-header{ opacity:.9; margin-top:1rem; }
 .clue{ font-size:1.1rem; margin:.5rem auto 0; position:relative; }
 
@@ -140,9 +147,89 @@ body{
 
 /* Bottom actions — centred under the clue */
 .bottom-actions{
-  width:min(560px, 92vw);
+  width:100%;
   display:flex; flex-wrap:wrap; align-items:center; justify-content:center; gap:.5rem;
   margin:1rem auto 1.25rem;
+}
+
+.mobile-keyboard{ display:none; }
+
+.mobile-keyboard-row{ display:flex; justify-content:center; gap:.35rem; }
+.mobile-keyboard button{
+  flex:1;
+  border:0;
+  border-radius:10px;
+  padding:.75rem 0;
+  font-size:1.05rem;
+  font-weight:600;
+  background:#1a1a1a;
+  color:#fff;
+  box-shadow:0 2px 6px rgba(0,0,0,.3);
+}
+.mobile-keyboard button:active{ transform:scale(.97); }
+.mobile-keyboard-row.controls button{
+  flex:0;
+  padding:.65rem 1.1rem;
+  font-size:.95rem;
+}
+
+.mobile-keyboard button.close-keyboard{ background:#333; }
+.mobile-keyboard button.action-key{ background:#444; }
+.mobile-keyboard button.delete-key{ background:#b53; }
+
+@media (hover:hover){
+  .mobile-keyboard button:hover{ background:#2c2c2c; }
+}
+
+body.mobile-touch{
+  --mobile-keyboard-space:0px;
+}
+body.mobile-touch .game-screen{
+  align-items:stretch;
+  justify-content:flex-start;
+  padding:1.5rem 1rem calc(1.5rem + var(--mobile-keyboard-space, 0px) + env(safe-area-inset-bottom, 0px));
+  gap:1.25rem;
+}
+body.mobile-touch .top-bar,
+body.mobile-touch .clue-section{
+  width:100%;
+  max-width:560px;
+  margin:0 auto;
+}
+body.mobile-touch #grid{
+  order:3;
+  margin:0 auto;
+}
+body.mobile-touch .clue-section{
+  order:2;
+  gap:.5rem;
+}
+body.mobile-touch .mobile-keyboard{
+  order:4;
+  display:none;
+  position:fixed;
+  left:50%;
+  transform:translateX(-50%);
+  bottom:0;
+  width:100%;
+  max-width:560px;
+  background:#0d0d0d;
+  border-radius:18px 18px 0 0;
+  border:1px solid #222;
+  border-bottom:none;
+  box-shadow:0 -12px 32px rgba(0,0,0,.55);
+  padding:1rem .65rem calc(1rem + env(safe-area-inset-bottom, 0px));
+  z-index:50;
+}
+body.mobile-touch .mobile-keyboard.visible{ display:block; }
+body.mobile-touch .clue-header{ margin-top:.35rem; }
+body.mobile-touch .bottom-actions{ margin:0; }
+body.mobile-touch .dropdown .menu{ transform:translate(-50%, 0); }
+body.mobile-touch .grid{ margin-top:0; }
+body.mobile-touch .top-bar{ order:1; }
+
+body.mobile-touch.mobile-keyboard-open{
+  --mobile-keyboard-space:var(--mobile-keyboard-height, 0px);
 }
 
 /* Modal & fireworks */

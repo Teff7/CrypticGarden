@@ -27,26 +27,30 @@
     <!-- Grid -->
     <div id="grid" class="grid" role="application" aria-label="5 by 5 crossword grid"></div>
 
-    <!-- Clue panel (stays between grid and bottom buttons) -->
-    <div id="cluePanel" class="clue-panel">
-      <div id="clueHeader" class="clue-header">—</div>
-      <div id="clueText" class="clue"></div>
-    </div>
-
-    <!-- BOTTOM: centered gameplay buttons -->
-    <div class="bottom-actions">
-      <div class="dropdown" id="hintDropdown">
-        <button class="help-button small" id="btnHints" aria-haspopup="true" aria-expanded="false">Hints ▾</button>
-        <div class="menu" id="hintMenu" role="menu" aria-hidden="true">
-          <button class="menu-item" id="hintDef" role="menuitem">Definition</button>
-          <button class="menu-item" id="hintLetter" role="menuitem">Reveal a letter</button>
-          <button class="menu-item" id="hintWordplay" role="menuitem">Reveal the trick</button>
-        </div>
+    <!-- Clues + controls -->
+    <div id="clueSection" class="clue-section">
+      <div id="cluePanel" class="clue-panel">
+        <div id="clueHeader" class="clue-header">—</div>
+        <div id="clueText" class="clue"></div>
       </div>
 
-      <button class="help-button small" id="btnGiveUp" title="Reveal this entry">Reveal answer</button>
-      <button class="help-button small" id="btnHelpBottom">Help</button>
+      <!-- BOTTOM: centered gameplay buttons -->
+      <div class="bottom-actions">
+        <div class="dropdown" id="hintDropdown">
+          <button class="help-button small" id="btnHints" aria-haspopup="true" aria-expanded="false">Hints ▾</button>
+          <div class="menu" id="hintMenu" role="menu" aria-hidden="true">
+            <button class="menu-item" id="hintDef" role="menuitem">Definition</button>
+            <button class="menu-item" id="hintLetter" role="menuitem">Reveal a letter</button>
+            <button class="menu-item" id="hintWordplay" role="menuitem">Reveal the trick</button>
+          </div>
+        </div>
+
+        <button class="help-button small" id="btnGiveUp" title="Reveal this entry">Reveal answer</button>
+        <button class="help-button small" id="btnHelpBottom">Help</button>
+      </div>
     </div>
+
+    <div id="mobileKeyboard" class="mobile-keyboard" hidden aria-hidden="true"></div>
   </section>
 
   <!-- Help modal -->
