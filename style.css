@@ -100,6 +100,21 @@ body{
 .cell.active{ animation:flash 1s infinite alternate; outline:2px solid #fff; }
 @keyframes flash { 0%{background:#fff;color:#000} 100%{background:#000;color:#fff} }
 
+.cell.wordplay-flash::after{
+  content:"";
+  position:absolute;
+  inset:-4px;
+  border-radius:10px;
+  border:2px solid #ffb347;
+  opacity:.35;
+  animation:wordplayPulse .8s infinite alternate;
+  pointer-events:none;
+}
+@keyframes wordplayPulse{
+  from{opacity:.25;}
+  to{opacity:.75;}
+}
+
 /* Clue panel */
 .clue-panel{ width:min(560px, 92vw); }
 .clue-header{ opacity:.9; margin-top:1rem; }

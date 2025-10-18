@@ -56,6 +56,9 @@ let puzzleFinished = false;
 let puzzles = [];
 let currentPuzzleIndex = 0;
 
+let wordplayHoverActive = false;
+let wordplayHighlightEntry = null;
+
 const TIP = {
   acrostic: 'Take first letters.',
   hidden: 'Look within the fodder.',
@@ -423,8 +426,13 @@ function renderLetters(){
 }
 
 function setCurrentEntry(ent, fromCellKey=null){
+  if (wordplayHoverActive) applyWordplayHighlight(null);
+  else clearWordplayHighlight();
   currentEntry = ent;
-  if (!ent) return;
+  if (!ent){
+    stopWordplayHover();
+    return;
+  }
   renderClue(ent);
   if (fromCellKey){
     const i = ent.cells.findIndex(c => key(c.r,c.c)===fromCellKey);
@@ -438,6 +446,7 @@ function setCurrentEntry(ent, fromCellKey=null){
   const cell = ent.cells[ent.iActive];
   activeCellKey = key(cell.r,cell.c);
   renderLetters();
+  if (wordplayHoverActive) applyWordplayHighlight(currentEntry);
 }
 
 function highlightActive(){
@@ -447,6 +456,39 @@ function highlightActive(){
     if (c !== active) c.el.style.background = ACTIVE_ENTRY_BG;
   });
   if (active) active.el.classList.add('active');
+}
+
+function applyWordplayHighlight(ent){
+  if (wordplayHighlightEntry && wordplayHighlightEntry !== ent){
+    wordplayHighlightEntry.cells.forEach(cell => cell.el.classList.remove('wordplay-flash'));
+  }
+  if (!ent){
+    wordplayHighlightEntry = null;
+    return;
+  }
+  ent.cells.forEach(cell => cell.el.classList.add('wordplay-flash'));
+  wordplayHighlightEntry = ent;
+}
+
+function clearWordplayHighlight(){
+  if (!wordplayHighlightEntry) return;
+  wordplayHighlightEntry.cells.forEach(cell => cell.el.classList.remove('wordplay-flash'));
+  wordplayHighlightEntry = null;
+}
+
+function startWordplayHover(){
+  if (!currentEntry) return;
+  wordplayHoverActive = true;
+  applyWordplayHighlight(currentEntry);
+}
+
+function stopWordplayHover(){
+  wordplayHoverActive = false;
+  clearWordplayHighlight();
+}
+
+function isWordplaySpan(node){
+  return !!(node && node.tagName === 'SPAN' && !node.classList.contains('def'));
 }
 
 function handleCellClick(k){
@@ -607,7 +649,12 @@ function setupHandlers(){
       return;
     }
     const shown = clueTextEl.classList.toggle('annot-on');
-    if (shown) onHintUsed(currentEntry.id, 'analyse');
+    if (shown){
+      onHintUsed(currentEntry.id, 'analyse');
+      if (wordplayHoverActive) applyWordplayHighlight(currentEntry);
+    } else {
+      stopWordplayHover();
+    }
     closeHintDropdown();
   });
 
@@ -675,6 +722,28 @@ function setupHandlers(){
     }
   });
 
+  if (clueTextEl){
+    clueTextEl.addEventListener('mouseover', (e) => {
+      if (!clueTextEl.classList.contains('annot-on')) return;
+      const span = e.target.closest('span');
+      if (!span || !clueTextEl.contains(span) || !isWordplaySpan(span)) return;
+      startWordplayHover();
+    });
+    clueTextEl.addEventListener('mouseout', (e) => {
+      if (!wordplayHoverActive) return;
+      const span = e.target.closest('span');
+      if (!span || !clueTextEl.contains(span) || !isWordplaySpan(span)) return;
+      const rel = e.relatedTarget && typeof e.relatedTarget.closest === 'function'
+        ? e.relatedTarget.closest('span')
+        : null;
+      if (rel && clueTextEl.contains(rel) && isWordplaySpan(rel)) return;
+      stopWordplayHover();
+    });
+    clueTextEl.addEventListener('mouseleave', () => {
+      if (wordplayHoverActive) stopWordplayHover();
+    });
+  }
+
   // Back (welcome removed) — guard
   if (btnBack) btnBack.addEventListener('click', () => {
     if (game) game.hidden = true;
@@ -728,6 +797,7 @@ function restartGame(){
   if (fireworks) fireworks.classList.remove('on');
 
   if (clueTextEl) clueTextEl.classList.remove('help-on', 'annot-on');
+  stopWordplayHover();
 
   focusFirstCell();
   renderLetters();
@@ -975,6 +1045,7 @@ function applyPuzzle(data){
     clueTextEl.classList.remove('help-on', 'annot-on');
     clueTextEl.textContent = '';
   }
+  stopWordplayHover();
   if (clueHeaderEl) clueHeaderEl.textContent = '—';
   closeHintDropdown();
 
