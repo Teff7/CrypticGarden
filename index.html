@@ -24,8 +24,14 @@
       </div>
     </div>
 
-    <!-- Grid -->
-    <div id="grid" class="grid" role="application" aria-label="5 by 5 crossword grid"></div>
+    <!-- Grid + hint panel -->
+    <div class="grid-hint-wrap">
+      <div id="grid" class="grid" role="application" aria-label="5 by 5 crossword grid"></div>
+      <aside id="hintPanel" class="hint-panel" hidden>
+        <h3 class="hint-title">Hints</h3>
+        <div id="hintContent" class="hint-content"></div>
+      </aside>
+    </div>
 
     <!-- Clue panel (stays between grid and bottom buttons) -->
     <div id="cluePanel" class="clue-panel">
@@ -82,6 +88,17 @@
   </div>
 
   <div id="copyToast" class="toast" hidden>Copied</div>
+
+  <div id="ratingPopup" class="rating-popup" hidden>
+    <div class="rating-text">Rate this clue out of 5 stars</div>
+    <div class="rating-stars" role="group" aria-label="Rate this clue">
+      <button type="button" class="rating-star" data-score="1" aria-label="1 star">⭐</button>
+      <button type="button" class="rating-star" data-score="2" aria-label="2 stars">⭐</button>
+      <button type="button" class="rating-star" data-score="3" aria-label="3 stars">⭐</button>
+      <button type="button" class="rating-star" data-score="4" aria-label="4 stars">⭐</button>
+      <button type="button" class="rating-star" data-score="5" aria-label="5 stars">⭐</button>
+    </div>
+  </div>
 
   <div id="fireworks" class="fireworks" aria-hidden="true"></div>
 
