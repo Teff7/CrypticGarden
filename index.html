@@ -12,7 +12,7 @@
          style="opacity:0; position:absolute; left:-10000px;" />
 
   <!-- Game (loads immediately; no welcome screen) -->
-  <section id="game" class="game-screen">
+  <section id="game" class="game-screen app">
     <!-- TOP: centered date (menu removed) -->
     <div class="top-bar">
       <div class="top-center">
@@ -20,21 +20,20 @@
         <select id="puzzleSelect" class="puzzle-select" disabled>
           <option>Loading…</option>
         </select>
-        <div id="puzzleDate" class="date">Loading crosswords…</div>
       </div>
     </div>
 
-    <!-- Grid -->
-    <div id="grid" class="grid" role="application" aria-label="5 by 5 crossword grid"></div>
-
     <!-- Clue panel (stays between grid and bottom buttons) -->
-    <div id="cluePanel" class="clue-panel">
+    <section id="cluePanel" class="clues-panel clue-panel" aria-label="Clues">
       <div id="clueHeader" class="clue-header">—</div>
       <div id="clueText" class="clue"></div>
-    </div>
+    </section>
+
+    <!-- Grid -->
+    <div id="grid" class="crossword grid" role="application" aria-label="5 by 5 crossword grid"></div>
 
     <!-- BOTTOM: centered gameplay buttons -->
-    <div class="bottom-actions">
+    <div class="hints-bar bottom-actions" role="toolbar" aria-label="Hints and actions">
       <div class="dropdown" id="hintDropdown">
         <button class="help-button small" id="btnHints" aria-haspopup="true" aria-expanded="false">Hints ▾</button>
         <div class="menu" id="hintMenu" role="menu" aria-hidden="true">
@@ -49,7 +48,7 @@
     </div>
   </section>
 
-  <section id="mobileKeyboard" class="mobile-keyboard" aria-hidden="true"></section>
+  <section id="mobileKeyboard" class="mobile-keyboard keyboard" aria-hidden="true"></section>
 
   <!-- Help modal -->
   <div id="helpModal" class="modal" hidden>

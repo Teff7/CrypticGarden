@@ -11,6 +11,7 @@ const puzzleSelect = document.getElementById('puzzleSelect');
 const puzzleDate = document.getElementById('puzzleDate');
 const mobileInput = document.getElementById('mobileInput');
 const mobileKeyboard = document.getElementById('mobileKeyboard');
+const rootElement = document.documentElement;
 
 // Top menu removed
 const topMenuWrap = document.getElementById('topMenuWrap');
@@ -53,6 +54,7 @@ const KEYBOARD_LAYOUT = [
 
 let usingCustomKeyboard = false;
 let keyboardVisible = false;
+let keyboardHiddenForMenu = false;
 
 // Share modal elements
 const shareModal = document.getElementById('shareModal');
@@ -185,10 +187,15 @@ function shouldUseCustomKeyboard(){
   return mobileWidth && isTouchCapable();
 }
 
-function updateKeyboardHeight(){
-  if (!mobileKeyboard || !keyboardVisible) return;
-  const height = mobileKeyboard.offsetHeight;
-  document.body.style.setProperty('--keyboard-height', `${height}px`);
+function setKbVar(){
+  const height = (mobileKeyboard && keyboardVisible) ? mobileKeyboard.offsetHeight : 0;
+  rootElement.style.setProperty('--kb', `${height}px`);
+  if (!document.body) return;
+  if (height){
+    document.body.style.setProperty('--keyboard-height', `${height}px`);
+  } else {
+    document.body.style.removeProperty('--keyboard-height');
+  }
 }
 
 function showMobileKeyboard(){
@@ -199,7 +206,7 @@ function showMobileKeyboard(){
   }
   keyboardVisible = true;
   document.body.classList.add('keyboard-open');
-  requestAnimationFrame(updateKeyboardHeight);
+  requestAnimationFrame(setKbVar);
 }
 
 function hideMobileKeyboard(){
@@ -208,13 +215,13 @@ function hideMobileKeyboard(){
   mobileKeyboard.setAttribute('aria-hidden','true');
   keyboardVisible = false;
   document.body.classList.remove('keyboard-open');
-  document.body.style.removeProperty('--keyboard-height');
+  setKbVar();
 }
 
 function applyCustomKeyboardMode(){
   const shouldUse = shouldUseCustomKeyboard();
   if (shouldUse === usingCustomKeyboard){
-    if (!shouldUse) hideMobileKeyboard(); else updateKeyboardHeight();
+    if (!shouldUse) hideMobileKeyboard(); else setKbVar();
     return;
   }
   usingCustomKeyboard = shouldUse;
@@ -233,6 +240,13 @@ function applyCustomKeyboardMode(){
     }
   }
 }
+
+if (typeof ResizeObserver !== 'undefined' && mobileKeyboard){
+  const keyboardResizeObserver = new ResizeObserver(() => setKbVar());
+  keyboardResizeObserver.observe(mobileKeyboard);
+}
+
+window.addEventListener('orientationchange', setKbVar);
 
 function key(r,c){ return `${r},${c}`; }
 
@@ -566,13 +580,22 @@ function setCurrentEntry(ent, fromCellKey=null){
   renderLetters();
 }
 
+function ensureCellVisible(el){
+  if (!el) return;
+  if (!window.matchMedia('(max-width: 768px)').matches) return;
+  el.scrollIntoView({ block: 'center', inline: 'center', behavior: 'smooth' });
+}
+
 function highlightActive(){
   if (!currentEntry) return;
   const active = currentEntry.cells[currentEntry.iActive];
   currentEntry.cells.forEach(c => {
     if (c !== active) c.el.style.background = ACTIVE_ENTRY_BG;
   });
-  if (active) active.el.classList.add('active');
+  if (active){
+    active.el.classList.add('active');
+    ensureCellVisible(active.el);
+  }
 }
 
 function handleCellClick(k, opts={}){
@@ -677,10 +700,14 @@ function finishGame(){
   if (fireworks) fireworks.classList.add('on');
 }
 
-function closeHintDropdown(){
+function closeHintDropdown({ restoreKeyboard = true } = {}){
   if (hintDropdown) hintDropdown.classList.remove('open');
   if (btnHints) btnHints.setAttribute('aria-expanded', 'false');
   if (hintMenu) hintMenu.setAttribute('aria-hidden', 'true');
+  if (restoreKeyboard && keyboardHiddenForMenu && usingCustomKeyboard){
+    showMobileKeyboard();
+  }
+  keyboardHiddenForMenu = false;
 }
 
 // ----- Help & hints & misc -----
@@ -709,6 +736,12 @@ function setupHandlers(){
       btnHints.setAttribute('aria-expanded', 'true');
       if (hintMenu) hintMenu.setAttribute('aria-hidden', 'false');
       if (hintDropdown) hintDropdown.classList.add('open');
+      if (usingCustomKeyboard && keyboardVisible){
+        keyboardHiddenForMenu = true;
+        hideMobileKeyboard();
+      } else {
+        keyboardHiddenForMenu = false;
+      }
     }
   });
   if (btnHintDef) btnHintDef.addEventListener('click', () => {
@@ -830,6 +863,12 @@ function setupHandlers(){
     else if (e.key === 'ArrowRight'){ e.preventDefault(); moveCursor(1,0); }
     else if (e.key === 'ArrowUp'){ e.preventDefault(); moveCursor(0,-1); }
     else if (e.key === 'ArrowDown'){ e.preventDefault(); moveCursor(0,1); }
+    else if (e.key === 'Escape'){ 
+      if (hintDropdown && hintDropdown.classList.contains('open')){
+        e.preventDefault();
+        closeHintDropdown();
+      }
+    }
   });
 
   if (mobileKeyboard){
@@ -837,7 +876,8 @@ function setupHandlers(){
     applyCustomKeyboardMode();
     const updateForResize = () => {
       applyCustomKeyboardMode();
-      if (keyboardVisible) requestAnimationFrame(updateKeyboardHeight);
+      setKbVar();
+      requestAnimationFrame(setKbVar);
     };
     window.addEventListener('resize', updateForResize);
     window.addEventListener('orientationchange', () => {
@@ -1154,6 +1194,7 @@ function useFallbackPuzzle(){
 // ----- Boot -----
 window.addEventListener('load', () => {
   setupHandlers();
+  setKbVar();
 
   fetch(FILE)
     .then(r => {
