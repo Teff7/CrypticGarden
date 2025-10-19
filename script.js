@@ -121,7 +121,7 @@ const BASE_COLOUR_VALUES = {
   yellow: '#ffe74d',
   purple: '#c99cff'
 };
-const GREY_VALUE = '#bbb';
+const HINT_COLOUR = '#34c759';
 // Temporary highlight colour for other cells in the active entry
 const ACTIVE_ENTRY_BG = '#3c3c3c';
 
@@ -254,8 +254,8 @@ function buildGrid(){
         letter:'',
         // baseColour: "none" until a clue covering this cell is solved.
         baseColour: 'none',
-        // isGrey marks whether a hint has touched this cell.
-        isGrey: false,
+        // hinted marks whether a hint has touched this cell.
+        hinted: false,
 
         // locked letters cannot be overwritten once the clue is solved.
         locked: false,
@@ -361,8 +361,8 @@ function onClueSolved(clueId){
 }
 
 // Called when a hint is used on a clue.  For non reveal-letter hints we simply
-// grey out a random cell.  For reveal-letter hints we also fill in the correct
-// letter for one not-yet-correct cell.
+// mark a random cell as hinted.  For reveal-letter hints we also fill in the
+// correct letter for one not-yet-correct cell.
 function onHintUsed(clueId, type){
   const ent = entries.find(e => e.id === clueId);
 
@@ -378,7 +378,7 @@ function onHintUsed(clueId, type){
     if (!candidates.length) return;
     const { cell, idx } = candidates[Math.floor(Math.random()*candidates.length)];
     cell.letter = ent.answer[idx];
-    cell.isGrey = true;
+    cell.hinted = true;
     ent.iActive = idx;
     activeCellKey = key(cell.r, cell.c);
 
@@ -387,13 +387,13 @@ function onHintUsed(clueId, type){
     cell.entries.forEach(checkIfSolved);
 
   } else {
-    const candidates = ent.cells.filter(c => !c.isGrey);
+    const candidates = ent.cells.filter(c => !c.hinted);
     const cell = (candidates.length
       ? candidates[Math.floor(Math.random()*candidates.length)]
       : ent.cells[Math.floor(Math.random()*ent.cells.length)]);
-    cell.isGrey = true;
+    cell.hinted = true;
 
-    // Greying doesn't change letters, but the clue might already be correct.
+    // Marking doesn't change letters, but the clue might already be correct.
     checkIfSolved(ent);
   }
   renderLetters();
@@ -436,7 +436,7 @@ function renderSharePreview(){
       d.className = 'share-cell';
       let bg = '#000';
       if (!cell.block){
-        if (cell.isGrey) bg = GREY_VALUE;
+        if (cell.hinted) bg = HINT_COLOUR;
         else if (cell.baseColour !== 'none') bg = BASE_COLOUR_VALUES[cell.baseColour];
         else bg = '#fff';
       }
@@ -456,7 +456,7 @@ function buildShareText(){
       const cell = grid[r][c];
       let emoji = '⬛';
       if (!cell.block){
-        if (cell.isGrey) emoji = '⬜';
+        if (cell.hinted) emoji = '🟢';
         else if (cell.baseColour === 'green') emoji = '🟩';
         else if (cell.baseColour === 'yellow') emoji = '🟨';
         else if (cell.baseColour === 'purple') emoji = '🟪';
@@ -524,12 +524,12 @@ function renderLetters(){
     cell.el.classList.remove('active');
     if (cell.block) return;
 
-    // Apply colouring rules.  Grey overlay takes precedence over baseColour.
+    // Apply colouring rules.  Hint overlay takes precedence over baseColour.
     let bg = '#fff';
-    if (cell.isGrey) bg = GREY_VALUE;
+    if (cell.hinted) bg = HINT_COLOUR;
     else if (cell.baseColour !== 'none') bg = BASE_COLOUR_VALUES[cell.baseColour];
     cell.el.style.background = bg;
-    cell.el.style.color = '#000'; // keep text legible over grey
+    cell.el.style.color = '#000'; // keep text legible over highlights
   });
 
   grid.flat().forEach(cell => {
@@ -762,8 +762,8 @@ function setupHandlers(){
     if (!currentEntry) return;
     currentEntry.cells.forEach((cell, idx) => {
       cell.letter = currentEntry.answer[idx];
-      // Grey out entire answer when revealed
-      cell.isGrey = true;
+      // Mark entire answer when revealed
+      cell.hinted = true;
     });
     // After revealing, re-check all affected clues.
     currentEntry.cells.forEach(cell => cell.entries.forEach(checkIfSolved));
@@ -863,7 +863,7 @@ function restartGame(){
     ent.cells.forEach(c => {
       c.letter = '';
       c.baseColour = 'none';
-      c.isGrey = false;
+      c.hinted = false;
 
       c.locked = false;
     });
