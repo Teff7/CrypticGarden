@@ -199,7 +199,6 @@ function entryMatchesAnswer(ent){
 
 function isEntrySolved(ent){
   if (!ent) return false;
-  if (ent.status === 'solved') return true;
   return entryMatchesAnswer(ent);
 }
 
