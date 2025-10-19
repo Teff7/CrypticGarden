@@ -560,6 +560,38 @@ function backspace(){
   renderLetters();
 }
 
+function clearCurrentEntry(){
+  if (!currentEntry) return;
+  if (isEntrySolved(currentEntry)){
+    mobileBehaviours.hideKeyboard();
+    return;
+  }
+
+  let cleared = false;
+  currentEntry.cells.forEach((cell) => {
+    if (cell.locked) return;
+    if (cell.letter){
+      cell.letter = '';
+      cleared = true;
+    }
+  });
+
+  if (!cleared) {
+    mobileBehaviours.onEntryFocus();
+    return;
+  }
+
+  let focusIndex = currentEntry.cells.findIndex(cell => !cell.locked);
+  if (focusIndex === -1) focusIndex = 0;
+  currentEntry.iActive = focusIndex;
+  const first = currentEntry.cells[currentEntry.iActive];
+  if (first) activeCellKey = key(first.r, first.c);
+
+  currentEntry.cells.forEach(cell => cell.entries.forEach(checkIfSolved));
+  renderLetters();
+  mobileBehaviours.onEntryFocus();
+}
+
 function submitAnswer(){
   if (!currentEntry) return;
   const guess = currentEntry.cells.map(c => c.letter||' ').join('').toUpperCase();
@@ -1103,7 +1135,7 @@ function createMobileBehaviours(){
   };
 
   const showKeyboard = () => {
-    if (!active || hintMenuOpen || !currentEntry) return;
+    if (!active || hintMenuOpen) return;
     if (!keyboardBuilt) buildKeyboard();
     if (keyboardVisible){
       syncKeyboardHeight();
@@ -1123,7 +1155,7 @@ function createMobileBehaviours(){
     e.preventDefault();
     const action = btn.dataset.action;
     if (action === 'delete'){ backspace(); return; }
-    if (action === 'submit'){ submitAnswer(); return; }
+    if (action === 'clear'){ clearCurrentEntry(); return; }
     if (action === 'close'){ hideKeyboardInternal(); return; }
     const keyVal = btn.dataset.key;
     if (keyVal) typeChar(keyVal);
@@ -1160,12 +1192,12 @@ function createMobileBehaviours(){
     backspaceBtn.setAttribute('aria-label', 'Backspace');
     backspaceBtn.textContent = '⌫';
 
-    const submitBtn = document.createElement('button');
-    submitBtn.type = 'button';
-    submitBtn.dataset.action = 'submit';
-    submitBtn.classList.add('action-key');
-    submitBtn.setAttribute('aria-label', 'Submit answer');
-    submitBtn.textContent = 'Enter';
+    const clearBtn = document.createElement('button');
+    clearBtn.type = 'button';
+    clearBtn.dataset.action = 'clear';
+    clearBtn.classList.add('action-key');
+    clearBtn.setAttribute('aria-label', 'Clear current clue');
+    clearBtn.textContent = 'Clear';
 
     const closeBtn = document.createElement('button');
     closeBtn.type = 'button';
@@ -1174,19 +1206,10 @@ function createMobileBehaviours(){
     closeBtn.setAttribute('aria-label', 'Hide keyboard');
     closeBtn.textContent = 'Hide';
 
-    controls.append(backspaceBtn, submitBtn, closeBtn);
+    controls.append(backspaceBtn, clearBtn, closeBtn);
     mobileKeyboard.appendChild(controls);
 
     mobileKeyboard.addEventListener('click', handleKeyboardClick);
-  };
-
-  const handleDocumentClick = (e) => {
-    if (!active || !keyboardVisible) return;
-    const target = e.target;
-    if (mobileKeyboard.contains(target)) return;
-    if (gridEl && gridEl.contains(target)) return;
-    if (hintDropdown && hintDropdown.contains(target)) return;
-    hideKeyboardInternal();
   };
 
   const enable = () => {
@@ -1194,13 +1217,10 @@ function createMobileBehaviours(){
     active = true;
     body.classList.add('mobile-touch');
     hintMenuOpen = false;
-    hideKeyboardInternal();
     buildKeyboard();
-    mobileKeyboard.hidden = true;
-    mobileKeyboard.setAttribute('aria-hidden', 'true');
-    mobileKeyboard.classList.remove('visible');
     if (mobileInput) mobileInput.blur();
-    document.addEventListener('click', handleDocumentClick);
+    keyboardVisible = false;
+    showKeyboard();
     window.addEventListener('resize', syncKeyboardHeight);
   };
 
@@ -1211,7 +1231,6 @@ function createMobileBehaviours(){
     hintMenuOpen = false;
     body.classList.remove('mobile-touch', 'mobile-keyboard-open');
     body.style.removeProperty('--mobile-keyboard-height');
-    document.removeEventListener('click', handleDocumentClick);
     window.removeEventListener('resize', syncKeyboardHeight);
   };
 
@@ -1223,6 +1242,7 @@ function createMobileBehaviours(){
     setTimeout(() => {
       syncKeyboardHeight();
       evaluate();
+      showKeyboard();
     }, 200);
   };
 
@@ -1237,7 +1257,7 @@ function createMobileBehaviours(){
     isActive: () => active,
     updateState: evaluate,
     onEntryFocus: () => { if (active) showKeyboard(); },
-    onEntryCleared: () => { if (active) hideKeyboardInternal(); },
+    onEntryCleared: () => { if (active && !hintMenuOpen) showKeyboard(); },
     onHintMenuOpened: () => {
       if (!active) return;
       hintMenuOpen = true;
@@ -1246,6 +1266,7 @@ function createMobileBehaviours(){
     onHintMenuClosed: () => {
       if (!active) return;
       hintMenuOpen = false;
+      showKeyboard();
     },
     onHintSelected: () => {
       if (!active) return;
