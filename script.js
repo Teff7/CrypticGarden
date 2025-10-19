@@ -58,6 +58,12 @@ const dirToggle = new Map();
 let puzzleFinished = false;
 let puzzles = [];
 let currentPuzzleIndex = 0;
+let activeTooltipTarget = null;
+let clueTooltipEl = null;
+let tooltipHandlersBound = false;
+let hintPromptEl = null;
+let hintPromptTimeout = null;
+let hintPromptShown = false;
 
 const TIP = {
   acrostic: 'Take first letters.',
@@ -107,7 +113,7 @@ const BASE_COLOUR_VALUES = {
   yellow: '#ffe74d',
   purple: '#c99cff'
 };
-const GREY_VALUE = '#bbb';
+const HINT_COLOUR_VALUE = BASE_COLOUR_VALUES.green;
 // Temporary highlight colour for other cells in the active entry
 const ACTIVE_ENTRY_BG = '#3c3c3c';
 
@@ -131,7 +137,7 @@ function buildGrid(){
         letter:'',
         // baseColour: "none" until a clue covering this cell is solved.
         baseColour: 'none',
-        // isGrey marks whether a hint has touched this cell.
+        // isGrey marks whether a hint highlight has touched this cell.
         isGrey: false,
 
         // locked letters cannot be overwritten once the clue is solved.
@@ -175,7 +181,12 @@ function placeEntries(){
     cells: [],
     iActive: 0,
     // Track whether the clue has been solved.
-    status: 'unsolved'
+    status: 'unsolved',
+    // Remember which hint overlays should be shown when the clue regains focus.
+    hintState: {
+      definition: false,
+      analyse: false
+    }
   }));
 
   entries.forEach(ent => {
@@ -249,7 +260,7 @@ function onClueSolved(clueId){
 }
 
 // Called when a hint is used on a clue.  For non reveal-letter hints we simply
-// grey out a random cell.  For reveal-letter hints we also fill in the correct
+// highlight a random cell.  For reveal-letter hints we also fill in the correct
 // letter for one not-yet-correct cell.
 function onHintUsed(clueId, type){
   const ent = entries.find(e => e.id === clueId);
@@ -257,6 +268,14 @@ function onHintUsed(clueId, type){
   if (!ent || ent.status === 'solved') return;
 
   if (!ent) return;
+
+  if (!hintPromptShown && type === 'analyse'){
+    const hasInteractiveTips = !!(ent.clue && Array.isArray(ent.clue.segments) && ent.clue.segments.some(seg => seg && (seg.tooltip || (seg.category && TIP[seg.category]))));
+    if (hasInteractiveTips){
+      showHintPrompt();
+      hintPromptShown = true;
+    }
+  }
 
 
   if (type === 'reveal-letter'){
@@ -281,7 +300,7 @@ function onHintUsed(clueId, type){
       : ent.cells[Math.floor(Math.random()*ent.cells.length)]);
     cell.isGrey = true;
 
-    // Greying doesn't change letters, but the clue might already be correct.
+    // Highlighting doesn't change letters, but the clue might already be correct.
     checkIfSolved(ent);
   }
   renderLetters();
@@ -324,7 +343,7 @@ function renderSharePreview(){
       d.className = 'share-cell';
       let bg = '#000';
       if (!cell.block){
-        if (cell.isGrey) bg = GREY_VALUE;
+        if (cell.isGrey) bg = HINT_COLOUR_VALUE;
         else if (cell.baseColour !== 'none') bg = BASE_COLOUR_VALUES[cell.baseColour];
         else bg = '#fff';
       }
@@ -387,7 +406,154 @@ function closeShareModal(){
   renderLetters();
 }
 
+function ensureClueTooltip(){
+  if (clueTooltipEl) return clueTooltipEl;
+  const el = document.createElement('div');
+  el.className = 'clue-tooltip';
+  el.setAttribute('role', 'tooltip');
+  el.hidden = true;
+  document.body.appendChild(el);
+  clueTooltipEl = el;
+  return el;
+}
+
+function hideClueTooltip(){
+  const el = clueTooltipEl;
+  if (!el) return;
+  el.hidden = true;
+  activeTooltipTarget = null;
+}
+
+function ensureHintPrompt(){
+  if (hintPromptEl) return hintPromptEl;
+  const el = document.createElement('div');
+  el.className = 'toast hint-toast';
+  el.id = 'hintPrompt';
+  el.hidden = true;
+  el.setAttribute('role', 'status');
+  el.setAttribute('aria-live', 'polite');
+  document.body.appendChild(el);
+  hintPromptEl = el;
+  return el;
+}
+
+function showHintPrompt(){
+  const el = ensureHintPrompt();
+  el.textContent = 'Click/tap on the highlighted words to see your hints';
+  el.hidden = false;
+  if (hintPromptTimeout) clearTimeout(hintPromptTimeout);
+  hintPromptTimeout = setTimeout(() => {
+    el.hidden = true;
+  }, 5000);
+}
+
+function resetHintPrompt(){
+  hintPromptShown = false;
+  if (hintPromptTimeout){
+    clearTimeout(hintPromptTimeout);
+    hintPromptTimeout = null;
+  }
+  if (hintPromptEl) hintPromptEl.hidden = true;
+}
+
+function positionClueTooltip(target){
+  if (!target) return;
+  if (!document.body.contains(target)){
+    hideClueTooltip();
+    return;
+  }
+  const tooltip = ensureClueTooltip();
+  const text = target.getAttribute('data-tooltip');
+  if (!text){
+    hideClueTooltip();
+    return;
+  }
+  tooltip.textContent = text;
+  tooltip.hidden = false;
+  tooltip.style.left = '0px';
+  tooltip.style.top = '0px';
+  tooltip.style.maxWidth = `${Math.min(320, Math.max(0, window.innerWidth - 32))}px`;
+
+  const rect = target.getBoundingClientRect();
+  const tipRect = tooltip.getBoundingClientRect();
+  const desiredLeft = rect.left + (rect.width / 2) - (tipRect.width / 2);
+  const clampedLeft = Math.max(16, Math.min(window.innerWidth - tipRect.width - 16, desiredLeft));
+  const desiredTop = rect.bottom + 8;
+  const clampedTop = Math.max(16, Math.min(window.innerHeight - tipRect.height - 16, desiredTop));
+
+  tooltip.style.left = `${clampedLeft}px`;
+  tooltip.style.top = `${clampedTop}px`;
+}
+
+function applyHintClasses(ent){
+  if (!clueTextEl) return;
+  const state = (ent && ent.hintState) || {};
+  clueTextEl.className = 'clue';
+  clueTextEl.classList.toggle('help-on', !!state.definition);
+  clueTextEl.classList.toggle('annot-on', !!state.analyse);
+  if (!state.analyse) hideClueTooltip();
+}
+
+function setupTooltipHandlers(){
+  if (!clueTextEl || tooltipHandlersBound) return;
+  tooltipHandlersBound = true;
+
+  const findTooltipTarget = (eventTarget) => {
+    if (!clueTextEl.classList.contains('annot-on')) return null;
+    const candidate = eventTarget && eventTarget.closest('[data-tooltip]');
+    if (!candidate) return null;
+    if (!clueTextEl.contains(candidate)) return null;
+    const tipText = candidate.getAttribute('data-tooltip');
+    return tipText ? candidate : null;
+  };
+
+  const handlePointerOver = (event) => {
+    const target = findTooltipTarget(event.target);
+    if (!target){
+      if (activeTooltipTarget) hideClueTooltip();
+      return;
+    }
+    activeTooltipTarget = target;
+    positionClueTooltip(target);
+  };
+
+  const handlePointerOut = (event) => {
+    if (!activeTooltipTarget) return;
+    if (event.relatedTarget && activeTooltipTarget.contains(event.relatedTarget)) return;
+    if (event.relatedTarget && event.relatedTarget.closest('[data-tooltip]') === activeTooltipTarget) return;
+    hideClueTooltip();
+  };
+
+  const handlePointerDown = (event) => {
+    const target = findTooltipTarget(event.target);
+    if (target){
+      activeTooltipTarget = target;
+      positionClueTooltip(target);
+    }
+  };
+
+  const handleScroll = () => {
+    if (!activeTooltipTarget) return;
+    if (!document.body.contains(activeTooltipTarget)){ hideClueTooltip(); return; }
+    positionClueTooltip(activeTooltipTarget);
+  };
+
+  clueTextEl.addEventListener('pointerover', handlePointerOver);
+  clueTextEl.addEventListener('pointerout', handlePointerOut);
+  clueTextEl.addEventListener('pointerdown', handlePointerDown);
+  clueTextEl.addEventListener('pointercancel', hideClueTooltip);
+  clueTextEl.addEventListener('pointerleave', hideClueTooltip);
+  window.addEventListener('scroll', handleScroll, true);
+  window.addEventListener('resize', handleScroll);
+  document.addEventListener('pointerdown', (event) => {
+    if (!activeTooltipTarget) return;
+    if (clueTextEl.contains(event.target)) return;
+    hideClueTooltip();
+  });
+}
+
 function renderClue(ent){
+  hideClueTooltip();
   const segs = (ent.clue && ent.clue.segments) || [];
   const surface = (ent.clue && ent.clue.surface) || '';
   let html = buildClueMarkup(surface, segs);
@@ -399,8 +565,8 @@ function renderClue(ent){
   const dirLabel = ent.direction[0].toUpperCase() + ent.direction.slice(1);
   const num = ent.id.match(/^\d+/)[0];
   clueHeaderEl.textContent = `${num} ${dirLabel}`;  // “1 Across” / “1 Down”
-  clueTextEl.className = 'clue';
   clueTextEl.innerHTML = html;
+  applyHintClasses(ent);
 }
 
 function renderLetters(){
@@ -412,12 +578,12 @@ function renderLetters(){
     cell.el.classList.remove('active');
     if (cell.block) return;
 
-    // Apply colouring rules.  Grey overlay takes precedence over baseColour.
+    // Apply colouring rules.  Hint overlay takes precedence over baseColour.
     let bg = '#fff';
-    if (cell.isGrey) bg = GREY_VALUE;
+    if (cell.isGrey) bg = HINT_COLOUR_VALUE;
     else if (cell.baseColour !== 'none') bg = BASE_COLOUR_VALUES[cell.baseColour];
     cell.el.style.background = bg;
-    cell.el.style.color = '#000'; // keep text legible over grey
+    cell.el.style.color = '#000'; // keep text legible over hint colour
   });
 
   grid.flat().forEach(cell => {
@@ -439,6 +605,7 @@ function renderLetters(){
 function setCurrentEntry(ent, fromCellKey=null){
   currentEntry = ent;
   if (!ent){
+    hideClueTooltip();
     mobileBehaviours.onEntryCleared();
     return;
   }
@@ -654,8 +821,10 @@ function setupHandlers(){
       closeHintDropdown();
       return;
     }
-    const shown = clueTextEl.classList.toggle('help-on');
-    if (shown) onHintUsed(currentEntry.id, 'definition');
+    const nextState = !currentEntry.hintState.definition;
+    currentEntry.hintState.definition = nextState;
+    applyHintClasses(currentEntry);
+    if (nextState) onHintUsed(currentEntry.id, 'definition');
     closeHintDropdown();
     mobileBehaviours.onHintSelected();
   });
@@ -673,8 +842,10 @@ function setupHandlers(){
       closeHintDropdown();
       return;
     }
-    const shown = clueTextEl.classList.toggle('annot-on');
-    if (shown) onHintUsed(currentEntry.id, 'analyse');
+    const nextState = !currentEntry.hintState.analyse;
+    currentEntry.hintState.analyse = nextState;
+    applyHintClasses(currentEntry);
+    if (nextState) onHintUsed(currentEntry.id, 'analyse');
     closeHintDropdown();
     mobileBehaviours.onHintSelected();
   });
@@ -703,7 +874,7 @@ function setupHandlers(){
     if (!currentEntry) return;
     currentEntry.cells.forEach((cell, idx) => {
       cell.letter = currentEntry.answer[idx];
-      // Grey out entire answer when revealed
+      // Highlight entire answer when revealed
       cell.isGrey = true;
     });
     // After revealing, re-check all affected clues.
@@ -788,6 +959,10 @@ function restartGame(){
 
       c.locked = false;
     });
+    if (ent.hintState){
+      ent.hintState.definition = false;
+      ent.hintState.analyse = false;
+    }
   });
   puzzleFinished = false;
   if (shareModal) shareModal.hidden = true;
@@ -796,6 +971,8 @@ function restartGame(){
   if (fireworks) fireworks.classList.remove('on');
 
   if (clueTextEl) clueTextEl.classList.remove('help-on', 'annot-on');
+  hideClueTooltip();
+  resetHintPrompt();
 
   focusFirstCell();
   renderLetters();
@@ -849,7 +1026,14 @@ function buildClueMarkup(surface='', segments=[]){
     const cls = seg.type === 'definition' ? 'def' : seg.type;
     const tip = seg.tooltip || (seg.category && TIP[seg.category]) || '';
     const segmentText = text.slice(match.start, match.end);
-    html += `<span class="${cls}" data-tooltip="${escapeHtml(tip)}">${escapeHtml(segmentText)}</span>`;
+    const classNames = [cls];
+    let tooltipAttr = '';
+    if (tip){
+      classNames.push('has-tip');
+      if (seg.tipNumber != null) classNames.push(`tip-${seg.tipNumber}`);
+      tooltipAttr = ` data-tooltip="${escapeHtml(tip)}"`;
+    }
+    html += `<span class="${classNames.join(' ')}"${tooltipAttr}>${escapeHtml(segmentText)}</span>`;
     cursor = match.end;
   });
   if (cursor < text.length){
@@ -915,6 +1099,7 @@ function buildSegments(row){
     const segment = { type, text: segText };
     if (category) segment.category = category;
     if (tipText) segment.tooltip = tipText;
+    segment.tipNumber = i;
     segments.push(segment);
   }
   return segments;
@@ -1044,7 +1229,9 @@ function applyPuzzle(data){
     clueTextEl.textContent = '';
   }
   if (clueHeaderEl) clueHeaderEl.textContent = '—';
+  hideClueTooltip();
   closeHintDropdown();
+  resetHintPrompt();
 
   buildGrid();
   placeEntries();
@@ -1281,6 +1468,7 @@ function createMobileBehaviours(){
 window.addEventListener('load', () => {
   mobileBehaviours.updateState();
   setupHandlers();
+  setupTooltipHandlers();
 
   fetch(FILE)
     .then(r => {
