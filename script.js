@@ -107,7 +107,7 @@ const BASE_COLOUR_VALUES = {
   yellow: '#ffe74d',
   purple: '#c99cff'
 };
-const GREY_VALUE = '#bbb';
+const HINT_COLOUR_VALUE = BASE_COLOUR_VALUES.green;
 // Temporary highlight colour for other cells in the active entry
 const ACTIVE_ENTRY_BG = '#3c3c3c';
 
@@ -131,7 +131,7 @@ function buildGrid(){
         letter:'',
         // baseColour: "none" until a clue covering this cell is solved.
         baseColour: 'none',
-        // isGrey marks whether a hint has touched this cell.
+        // isGrey marks whether a hint highlight has touched this cell.
         isGrey: false,
 
         // locked letters cannot be overwritten once the clue is solved.
@@ -249,7 +249,7 @@ function onClueSolved(clueId){
 }
 
 // Called when a hint is used on a clue.  For non reveal-letter hints we simply
-// grey out a random cell.  For reveal-letter hints we also fill in the correct
+// highlight a random cell.  For reveal-letter hints we also fill in the correct
 // letter for one not-yet-correct cell.
 function onHintUsed(clueId, type){
   const ent = entries.find(e => e.id === clueId);
@@ -281,7 +281,7 @@ function onHintUsed(clueId, type){
       : ent.cells[Math.floor(Math.random()*ent.cells.length)]);
     cell.isGrey = true;
 
-    // Greying doesn't change letters, but the clue might already be correct.
+    // Highlighting doesn't change letters, but the clue might already be correct.
     checkIfSolved(ent);
   }
   renderLetters();
@@ -324,7 +324,7 @@ function renderSharePreview(){
       d.className = 'share-cell';
       let bg = '#000';
       if (!cell.block){
-        if (cell.isGrey) bg = GREY_VALUE;
+        if (cell.isGrey) bg = HINT_COLOUR_VALUE;
         else if (cell.baseColour !== 'none') bg = BASE_COLOUR_VALUES[cell.baseColour];
         else bg = '#fff';
       }
@@ -412,12 +412,12 @@ function renderLetters(){
     cell.el.classList.remove('active');
     if (cell.block) return;
 
-    // Apply colouring rules.  Grey overlay takes precedence over baseColour.
+    // Apply colouring rules.  Hint overlay takes precedence over baseColour.
     let bg = '#fff';
-    if (cell.isGrey) bg = GREY_VALUE;
+    if (cell.isGrey) bg = HINT_COLOUR_VALUE;
     else if (cell.baseColour !== 'none') bg = BASE_COLOUR_VALUES[cell.baseColour];
     cell.el.style.background = bg;
-    cell.el.style.color = '#000'; // keep text legible over grey
+    cell.el.style.color = '#000'; // keep text legible over hint colour
   });
 
   grid.flat().forEach(cell => {
@@ -703,7 +703,7 @@ function setupHandlers(){
     if (!currentEntry) return;
     currentEntry.cells.forEach((cell, idx) => {
       cell.letter = currentEntry.answer[idx];
-      // Grey out entire answer when revealed
+      // Highlight entire answer when revealed
       cell.isGrey = true;
     });
     // After revealing, re-check all affected clues.
