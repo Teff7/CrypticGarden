@@ -191,11 +191,23 @@ function placeEntries(){
 }
 
 // ----- Events -----
+function entryMatchesAnswer(ent){
+  if (!ent) return false;
+  const guess = ent.cells.map(c => c.letter || '').join('').toUpperCase();
+  return guess === String(ent.answer || '').toUpperCase();
+}
+
+function isEntrySolved(ent){
+  if (!ent) return false;
+  if (ent.status === 'solved') return true;
+  return entryMatchesAnswer(ent);
+}
+
 // Return the next unsolved entry after the given index, wrapping around.
 function findNextUnsolvedEntry(startIdx){
   for (let i = 1; i <= entries.length; i++){
     const ent = entries[(startIdx + i) % entries.length];
-    if (ent.status !== 'solved') return ent;
+    if (!isEntrySolved(ent)) return ent;
   }
   return null;
 }
@@ -277,8 +289,8 @@ function onHintUsed(clueId, type){
 }
 
 function checkIfSolved(ent){
-  const guess = ent.cells.map(c => c.letter || '').join('').toUpperCase();
-  if (guess === ent.answer.toUpperCase()) onClueSolved(ent.id);
+  if (!ent || ent.status === 'solved') return;
+  if (entryMatchesAnswer(ent)) onClueSolved(ent.id);
 }
 
 // Check whether every cell matches its answer; if so, trigger completion.
@@ -468,14 +480,14 @@ function handleCellClick(k){
 
   let ent = belongs.find(e => e.direction===pref) || belongs[0];
 
-  if (ent && ent.status === 'solved'){
-    const alternative = belongs.find(e => e.status !== 'solved');
+  if (ent && isEntrySolved(ent)){
+    const alternative = belongs.find(e => !isEntrySolved(e));
     if (alternative) ent = alternative;
   }
 
   if (!ent) return;
 
-  if (ent.status === 'solved'){
+  if (isEntrySolved(ent)){
     mobileBehaviours.hideKeyboard();
     return;
   }
