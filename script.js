@@ -466,7 +466,20 @@ function handleCellClick(k){
   if (lastClickedCellKey === k) pref = pref==='across' ? 'down' : 'across';
   lastClickedCellKey = k;
 
-  const ent = belongs.find(e => e.direction===pref) || belongs[0];
+  let ent = belongs.find(e => e.direction===pref) || belongs[0];
+
+  if (ent && ent.status === 'solved'){
+    const alternative = belongs.find(e => e.status !== 'solved');
+    if (alternative) ent = alternative;
+  }
+
+  if (!ent) return;
+
+  if (ent.status === 'solved'){
+    mobileBehaviours.hideKeyboard();
+    return;
+  }
+
   dirToggle.set(k, ent.direction);
   setCurrentEntry(ent, k);
 }
