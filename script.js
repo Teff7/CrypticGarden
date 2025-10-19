@@ -513,12 +513,20 @@ function showHintPrompt(){
   if (hintPromptTimeout) clearTimeout(hintPromptTimeout);
   hintPromptTimeout = setTimeout(() => {
     hideHintPrompt();
+  if (hintPromptTimeout) clearTimeout(hintPromptTimeout);
+  hintPromptTimeout = setTimeout(() => {
+    el.hidden = true;
   }, 5000);
 }
 
 function resetHintPrompt(){
   hintPromptShown = false;
   hideHintPrompt();
+  if (hintPromptTimeout){
+    clearTimeout(hintPromptTimeout);
+    hintPromptTimeout = null;
+  }
+  if (hintPromptEl) hintPromptEl.hidden = true;
 }
 
 function positionClueTooltip(target){
@@ -619,6 +627,8 @@ function setupTooltipHandlers(){
   clueTextEl.addEventListener('pointerdown', handlePointerDown);
   clueTextEl.addEventListener('pointercancel', handlePointerCancel);
   clueTextEl.addEventListener('pointerleave', handlePointerCancel);
+  clueTextEl.addEventListener('pointercancel', hideClueTooltip);
+  clueTextEl.addEventListener('pointerleave', hideClueTooltip);
   window.addEventListener('scroll', handleScroll, true);
   window.addEventListener('resize', handleScroll);
   document.addEventListener('pointerdown', (event) => {
