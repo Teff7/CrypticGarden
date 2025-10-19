@@ -65,6 +65,8 @@ let hintPromptEl = null;
 let hintPromptTimeout = null;
 let hintPromptDismissHandler = null;
 let hintPromptShown = false;
+let hintPromptViewportHandler = null;
+let skipTooltipPointerDownId = null;
 
 const TIP = {
   acrostic: 'Take first letters.',
@@ -427,6 +429,7 @@ function hideClueTooltip(){
   if (!el) return;
   el.hidden = true;
   activeTooltipTarget = null;
+  skipTooltipPointerDownId = null;
 }
 
 function ensureHintPrompt(){
@@ -437,6 +440,10 @@ function ensureHintPrompt(){
   el.hidden = true;
   el.setAttribute('role', 'status');
   el.setAttribute('aria-live', 'polite');
+  el.addEventListener('pointerdown', (event) => {
+    event.stopPropagation();
+    hideHintPrompt();
+  });
   document.body.appendChild(el);
   hintPromptEl = el;
   return el;
@@ -459,6 +466,11 @@ function hideHintPrompt(){
     document.removeEventListener('pointerdown', hintPromptDismissHandler, true);
     hintPromptDismissHandler = null;
   }
+  if (hintPromptViewportHandler && window.visualViewport){
+    window.visualViewport.removeEventListener('resize', hintPromptViewportHandler);
+    window.visualViewport.removeEventListener('scroll', hintPromptViewportHandler);
+    hintPromptViewportHandler = null;
+  }
   window.removeEventListener('resize', positionHintPrompt);
   window.removeEventListener('scroll', positionHintPrompt, true);
 }
@@ -475,13 +487,19 @@ function positionHintPrompt(){
   }
   if (!gridEl) return;
   const rect = gridEl.getBoundingClientRect();
+  const viewport = window.visualViewport;
+  const viewportWidth = viewport ? viewport.width : window.innerWidth;
+  const viewportHeight = viewport ? viewport.height : window.innerHeight;
   const width = Math.max(0, rect.width);
-  const left = (width ? rect.left + width / 2 : window.innerWidth / 2);
+  const left = (width ? rect.left + width / 2 : viewportWidth / 2);
   const promptHeight = hintPromptEl.offsetHeight || 0;
   const availableTop = Math.max(16, rect.top + 16);
-  const maxTop = Math.max(16, window.innerHeight - promptHeight - 16);
+  const maxTop = Math.max(16, viewportHeight - promptHeight - 16);
   const top = Math.min(maxTop, availableTop);
-  const maxWidth = Math.max(180, Math.min(width - 24, window.innerWidth - 32, 360));
+  const widthConstraint = width > 0 ? Math.max(0, width - 24) : Number.POSITIVE_INFINITY;
+  const viewportConstraint = Math.max(0, viewportWidth - 32);
+  const computedMaxWidth = Math.min(widthConstraint, viewportConstraint, 360);
+  const maxWidth = Math.max(180, computedMaxWidth);
   hintPromptEl.style.top = `${top}px`;
   hintPromptEl.style.left = `${left}px`;
   hintPromptEl.style.bottom = 'auto';
@@ -504,6 +522,13 @@ function showHintPrompt(){
       };
       document.addEventListener('pointerdown', hintPromptDismissHandler, true);
     }
+    if (!hintPromptViewportHandler && window.visualViewport){
+      hintPromptViewportHandler = () => {
+        positionHintPrompt();
+      };
+      window.visualViewport.addEventListener('resize', hintPromptViewportHandler);
+      window.visualViewport.addEventListener('scroll', hintPromptViewportHandler);
+    }
     window.addEventListener('resize', positionHintPrompt);
     window.addEventListener('scroll', positionHintPrompt, true);
   } else {
@@ -513,9 +538,6 @@ function showHintPrompt(){
   if (hintPromptTimeout) clearTimeout(hintPromptTimeout);
   hintPromptTimeout = setTimeout(() => {
     hideHintPrompt();
-  if (hintPromptTimeout) clearTimeout(hintPromptTimeout);
-  hintPromptTimeout = setTimeout(() => {
-    el.hidden = true;
   }, 5000);
 }
 
@@ -545,14 +567,17 @@ function positionClueTooltip(target){
   tooltip.hidden = false;
   tooltip.style.left = '0px';
   tooltip.style.top = '0px';
-  tooltip.style.maxWidth = `${Math.min(320, Math.max(0, window.innerWidth - 32))}px`;
+  const viewport = window.visualViewport;
+  const viewportWidth = viewport ? viewport.width : window.innerWidth;
+  const viewportHeight = viewport ? viewport.height : window.innerHeight;
+  tooltip.style.maxWidth = `${Math.min(320, Math.max(0, viewportWidth - 32))}px`;
 
   const rect = target.getBoundingClientRect();
   const tipRect = tooltip.getBoundingClientRect();
   const desiredLeft = rect.left + (rect.width / 2) - (tipRect.width / 2);
-  const clampedLeft = Math.max(16, Math.min(window.innerWidth - tipRect.width - 16, desiredLeft));
+  const clampedLeft = Math.max(16, Math.min(viewportWidth - tipRect.width - 16, desiredLeft));
   const desiredTop = rect.bottom + 8;
-  const clampedTop = Math.max(16, Math.min(window.innerHeight - tipRect.height - 16, desiredTop));
+  const clampedTop = Math.max(16, Math.min(viewportHeight - tipRect.height - 16, desiredTop));
 
   tooltip.style.left = `${clampedLeft}px`;
   tooltip.style.top = `${clampedTop}px`;
@@ -601,13 +626,19 @@ function setupTooltipHandlers(){
 
   const handlePointerDown = (event) => {
     const target = findTooltipTarget(event.target);
+    const pointerId = typeof event.pointerId === 'number' ? event.pointerId : null;
     if (target){
       if (isMobileTouchActive() && activeTooltipTarget === target){
         hideClueTooltip();
+        skipTooltipPointerDownId = pointerId;
         return;
       }
       activeTooltipTarget = target;
       positionClueTooltip(target);
+      skipTooltipPointerDownId = pointerId;
+    } else if (isMobileTouchActive() && activeTooltipTarget && clueTextEl.contains(event.target)){
+      hideClueTooltip();
+      skipTooltipPointerDownId = pointerId;
     }
   };
 
@@ -631,11 +662,30 @@ function setupTooltipHandlers(){
   clueTextEl.addEventListener('pointerleave', hideClueTooltip);
   window.addEventListener('scroll', handleScroll, true);
   window.addEventListener('resize', handleScroll);
-  document.addEventListener('pointerdown', (event) => {
+  const handleDocumentPointerDown = (event) => {
+    if (skipTooltipPointerDownId !== null && event.pointerId === skipTooltipPointerDownId){
+      skipTooltipPointerDownId = null;
+      return;
+    }
+    skipTooltipPointerDownId = null;
     if (!activeTooltipTarget) return;
-    if (clueTextEl.contains(event.target)) return;
+    const targetNode = event.target;
+    if (activeTooltipTarget && activeTooltipTarget.contains(targetNode)){
+      if (isMobileTouchActive()) hideClueTooltip();
+      return;
+    }
+    if (clueTooltipEl && clueTooltipEl.contains(targetNode)){
+      hideClueTooltip();
+      return;
+    }
+    if (clueTextEl.contains(targetNode)){
+      if (isMobileTouchActive()) hideClueTooltip();
+      return;
+    }
     hideClueTooltip();
-  });
+  };
+
+  document.addEventListener('pointerdown', handleDocumentPointerDown);
 }
 
 function renderClue(ent){
