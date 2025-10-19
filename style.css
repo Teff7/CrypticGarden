@@ -313,3 +313,8 @@ body.mobile-touch.mobile-keyboard-open{
   line-height:1.35;
   box-shadow:0 4px 10px rgba(0,0,0,.35);
 }
+
+.toast.hint-toast.mobile-grid-overlay{
+  z-index:60;
+  pointer-events:auto;
+}

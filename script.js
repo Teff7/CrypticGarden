@@ -63,6 +63,7 @@ let clueTooltipEl = null;
 let tooltipHandlersBound = false;
 let hintPromptEl = null;
 let hintPromptTimeout = null;
+let hintPromptDismissHandler = null;
 let hintPromptShown = false;
 
 const TIP = {
@@ -118,6 +119,10 @@ const HINT_COLOUR_VALUE = BASE_COLOUR_VALUES.green;
 const ACTIVE_ENTRY_BG = '#3c3c3c';
 
 function key(r,c){ return `${r},${c}`; }
+
+function isMobileTouchActive(){
+  return document.body.classList.contains('mobile-touch');
+}
 
 // ----- Grid build -----
 function buildGrid(){
@@ -437,10 +442,77 @@ function ensureHintPrompt(){
   return el;
 }
 
+function hideHintPrompt(){
+  if (!hintPromptEl) return;
+  hintPromptEl.hidden = true;
+  hintPromptEl.classList.remove('mobile-grid-overlay');
+  hintPromptEl.style.removeProperty('top');
+  hintPromptEl.style.removeProperty('left');
+  hintPromptEl.style.removeProperty('bottom');
+  hintPromptEl.style.removeProperty('transform');
+  hintPromptEl.style.removeProperty('max-width');
+  if (hintPromptTimeout){
+    clearTimeout(hintPromptTimeout);
+    hintPromptTimeout = null;
+  }
+  if (hintPromptDismissHandler){
+    document.removeEventListener('pointerdown', hintPromptDismissHandler, true);
+    hintPromptDismissHandler = null;
+  }
+  window.removeEventListener('resize', positionHintPrompt);
+  window.removeEventListener('scroll', positionHintPrompt, true);
+}
+
+function positionHintPrompt(){
+  if (!hintPromptEl || hintPromptEl.hidden) return;
+  if (!isMobileTouchActive()){
+    hintPromptEl.style.left = '50%';
+    hintPromptEl.style.bottom = '3.5rem';
+    hintPromptEl.style.removeProperty('top');
+    hintPromptEl.style.transform = 'translateX(-50%)';
+    hintPromptEl.style.removeProperty('max-width');
+    return;
+  }
+  if (!gridEl) return;
+  const rect = gridEl.getBoundingClientRect();
+  const width = Math.max(0, rect.width);
+  const left = (width ? rect.left + width / 2 : window.innerWidth / 2);
+  const promptHeight = hintPromptEl.offsetHeight || 0;
+  const availableTop = Math.max(16, rect.top + 16);
+  const maxTop = Math.max(16, window.innerHeight - promptHeight - 16);
+  const top = Math.min(maxTop, availableTop);
+  const maxWidth = Math.max(180, Math.min(width - 24, window.innerWidth - 32, 360));
+  hintPromptEl.style.top = `${top}px`;
+  hintPromptEl.style.left = `${left}px`;
+  hintPromptEl.style.bottom = 'auto';
+  hintPromptEl.style.transform = 'translateX(-50%)';
+  hintPromptEl.style.maxWidth = `${maxWidth}px`;
+}
+
 function showHintPrompt(){
   const el = ensureHintPrompt();
   el.textContent = 'Click/tap on the highlighted words to see your hints';
   el.hidden = false;
+  if (isMobileTouchActive()){
+    el.classList.add('mobile-grid-overlay');
+    requestAnimationFrame(() => {
+      positionHintPrompt();
+    });
+    if (!hintPromptDismissHandler){
+      hintPromptDismissHandler = () => {
+        hideHintPrompt();
+      };
+      document.addEventListener('pointerdown', hintPromptDismissHandler, true);
+    }
+    window.addEventListener('resize', positionHintPrompt);
+    window.addEventListener('scroll', positionHintPrompt, true);
+  } else {
+    el.classList.remove('mobile-grid-overlay');
+    positionHintPrompt();
+  }
+  if (hintPromptTimeout) clearTimeout(hintPromptTimeout);
+  hintPromptTimeout = setTimeout(() => {
+    hideHintPrompt();
   if (hintPromptTimeout) clearTimeout(hintPromptTimeout);
   hintPromptTimeout = setTimeout(() => {
     el.hidden = true;
@@ -449,6 +521,7 @@ function showHintPrompt(){
 
 function resetHintPrompt(){
   hintPromptShown = false;
+  hideHintPrompt();
   if (hintPromptTimeout){
     clearTimeout(hintPromptTimeout);
     hintPromptTimeout = null;
@@ -508,6 +581,7 @@ function setupTooltipHandlers(){
   };
 
   const handlePointerOver = (event) => {
+    if (isMobileTouchActive()) return;
     const target = findTooltipTarget(event.target);
     if (!target){
       if (activeTooltipTarget) hideClueTooltip();
@@ -518,6 +592,7 @@ function setupTooltipHandlers(){
   };
 
   const handlePointerOut = (event) => {
+    if (isMobileTouchActive()) return;
     if (!activeTooltipTarget) return;
     if (event.relatedTarget && activeTooltipTarget.contains(event.relatedTarget)) return;
     if (event.relatedTarget && event.relatedTarget.closest('[data-tooltip]') === activeTooltipTarget) return;
@@ -527,9 +602,18 @@ function setupTooltipHandlers(){
   const handlePointerDown = (event) => {
     const target = findTooltipTarget(event.target);
     if (target){
+      if (isMobileTouchActive() && activeTooltipTarget === target){
+        hideClueTooltip();
+        return;
+      }
       activeTooltipTarget = target;
       positionClueTooltip(target);
     }
+  };
+
+  const handlePointerCancel = () => {
+    if (isMobileTouchActive()) return;
+    hideClueTooltip();
   };
 
   const handleScroll = () => {
@@ -541,6 +625,8 @@ function setupTooltipHandlers(){
   clueTextEl.addEventListener('pointerover', handlePointerOver);
   clueTextEl.addEventListener('pointerout', handlePointerOut);
   clueTextEl.addEventListener('pointerdown', handlePointerDown);
+  clueTextEl.addEventListener('pointercancel', handlePointerCancel);
+  clueTextEl.addEventListener('pointerleave', handlePointerCancel);
   clueTextEl.addEventListener('pointercancel', hideClueTooltip);
   clueTextEl.addEventListener('pointerleave', hideClueTooltip);
   window.addEventListener('scroll', handleScroll, true);
