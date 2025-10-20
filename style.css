@@ -270,11 +270,34 @@ body.mobile-touch.mobile-keyboard-open{
 .modal-card{
   width:min(680px, 92vw); max-height:86vh; overflow:auto;
   background:#111; border:1px solid #444; border-radius:16px; padding:1rem 1.25rem;
-  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  display:block;
+}
+#shareModal .modal-card{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  text-align:center;
+}
+.help-body{
+  width:100%;
+  margin-top:1rem;
+  display:flex;
+  flex-direction:column;
+  gap:1rem;
+  text-align:left;
+}
+.help-body p{
+  margin:0;
+  line-height:1.55;
+}
+.help-body em{
+  display:block;
+  margin-top:.35rem;
 }
 .modal-close{
   position:sticky; top:0;
-  align-self:flex-end;            /* replaces float-based positioning */
+  margin-left:auto;
+  display:block;
   border:0; background:transparent; color:#fff; font-size:2rem; cursor:pointer;
 }
 .fireworks{ position:fixed; inset:0; pointer-events:none }
