@@ -294,6 +294,36 @@ body.mobile-touch.mobile-keyboard-open{
   display:block;
   margin-top:.35rem;
 }
+.help-techniques{
+  width:100%;
+  margin-top:1.5rem;
+  padding-right:.5rem;
+  max-height:260px;
+  overflow-y:auto;
+  text-align:left;
+}
+.help-techniques h3{
+  margin-top:0;
+  margin-bottom:.75rem;
+  text-align:center;
+}
+.help-techniques dl{
+  margin:0;
+  display:grid;
+  gap:.85rem;
+}
+.help-techniques dt{
+  font-weight:700;
+}
+.help-techniques dd{
+  margin:0;
+  opacity:.85;
+}
+.help-techniques em{
+  display:block;
+  margin-top:.35rem;
+  opacity:.9;
+}
 .modal-close{
   position:sticky; top:0;
   margin-left:auto;
