@@ -1309,15 +1309,57 @@ function parsePositionList(raw){
   return result;
 }
 
+function readTooltipField(row, index, field, suffix){
+  if (!row) return null;
+  const variants = [];
+  const lower = field.toLowerCase();
+  const upper = field.toUpperCase();
+  const capital = field.charAt(0).toUpperCase() + field.slice(1);
+  const forms = [field, lower, upper, capital];
+  const seen = new Set();
+  const add = (key) => {
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    variants.push(key);
+  };
+
+  if (index != null){
+    forms.forEach(form => add(`Tooltip_${index}_${form}`));
+  }
+
+  if (suffix != null){
+    forms.forEach(form => add(`Tooltip_${form}${suffix}`));
+  } else {
+    forms.forEach(form => add(`Tooltip_${form}`));
+  }
+
+  if (index != null){
+    forms.forEach(form => add(`Tooltip_${form}_${index}`));
+    if (index > 1){
+      const alt = index - 1;
+      forms.forEach(form => add(`Tooltip_${form}.${alt}`));
+      forms.forEach(form => add(`Tooltip_${form}_${alt}`));
+    }
+  }
+
+  for (const key of variants){
+    if (Object.prototype.hasOwnProperty.call(row, key)){
+      const value = row[key];
+      if (value != null && String(value).trim() !== '') return value;
+    }
+  }
+  return null;
+}
+
 function buildSegments(row){
   const segments = [];
   if (!row) return segments;
   for (let i = 1; i <= 6; i++){
-    const typeRaw = row[`Tooltip_${i}_type`];
     const suffix = i === 1 ? '' : `.${i-1}`;
-    const textRaw = row[`Tooltip_section${suffix}`];
-    const tooltipRaw = row[`Tooltip_Text${suffix}`];
-    const posRaw = row[`Tooltip_${i}_Position`];
+    const typeRaw = readTooltipField(row, i, 'type', suffix);
+    const textRaw = readTooltipField(row, i, 'section', suffix);
+    const tooltipRaw = readTooltipField(row, i, 'text', suffix);
+    const posRaw = readTooltipField(row, i, 'Position', suffix);
     const segText = textRaw ? String(textRaw).trim() : '';
     const tipText = tooltipRaw ? String(tooltipRaw).trim() : '';
     const typeStr = typeRaw ? String(typeRaw).trim() : '';
