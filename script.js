@@ -67,6 +67,7 @@ let hintPromptDismissHandler = null;
 let hintPromptShown = false;
 let hintPromptViewportHandler = null;
 let skipTooltipPointerDownId = null;
+let tooltipHighlightCells = [];
 
 const TIP = {
   acrostic: 'Take first letters.',
@@ -430,6 +431,35 @@ function hideClueTooltip(){
   el.hidden = true;
   activeTooltipTarget = null;
   skipTooltipPointerDownId = null;
+  clearTooltipHighlights();
+}
+
+function clearTooltipHighlights(){
+  if (!tooltipHighlightCells.length) return;
+  tooltipHighlightCells.forEach(cell => {
+    if (cell && cell.el) cell.el.classList.remove('tooltip-highlight');
+  });
+  tooltipHighlightCells = [];
+}
+
+function applyTooltipHighlights(target){
+  clearTooltipHighlights();
+  if (!target || !currentEntry) return;
+  const attr = target.getAttribute('data-tip-cells');
+  if (!attr) return;
+  const matches = attr.match(/\d+/g) || [];
+  if (!matches.length) return;
+  const seen = new Set();
+  matches.forEach(raw => {
+    const idx = Number(raw);
+    if (!Number.isInteger(idx) || idx < 0 || seen.has(idx)) return;
+    seen.add(idx);
+    const cell = currentEntry.cells[idx];
+    if (cell && cell.el){
+      cell.el.classList.add('tooltip-highlight');
+      tooltipHighlightCells.push(cell);
+    }
+  });
 }
 
 function ensureHintPrompt(){
@@ -552,7 +582,10 @@ function resetHintPrompt(){
 }
 
 function positionClueTooltip(target){
-  if (!target) return;
+  if (!target){
+    hideClueTooltip();
+    return;
+  }
   if (!document.body.contains(target)){
     hideClueTooltip();
     return;
@@ -565,6 +598,7 @@ function positionClueTooltip(target){
   }
   tooltip.textContent = text;
   tooltip.hidden = false;
+  applyTooltipHighlights(target);
   tooltip.style.left = '0px';
   tooltip.style.top = '0px';
   const viewport = window.visualViewport;
@@ -1164,12 +1198,16 @@ function buildClueMarkup(surface='', segments=[]){
     const segmentText = text.slice(match.start, match.end);
     const classNames = [cls];
     let tooltipAttr = '';
+    let cellsAttr = '';
     if (tip){
       classNames.push('has-tip');
       if (seg.tipNumber != null) classNames.push(`tip-${seg.tipNumber}`);
       tooltipAttr = ` data-tooltip="${escapeHtml(tip)}"`;
     }
-    html += `<span class="${classNames.join(' ')}"${tooltipAttr}>${escapeHtml(segmentText)}</span>`;
+    if (Array.isArray(seg.positions) && seg.positions.length){
+      cellsAttr = ` data-tip-cells="${seg.positions.join(',')}"`;
+    }
+    html += `<span class="${classNames.join(' ')}"${tooltipAttr}${cellsAttr}>${escapeHtml(segmentText)}</span>`;
     cursor = match.end;
   });
   if (cursor < text.length){
@@ -1219,6 +1257,34 @@ function interpretSegmentType(raw){
   return { type: 'indicator', category };
 }
 
+function parsePositionList(raw){
+  if (raw == null) return [];
+  const str = String(raw).trim();
+  if (!str) return [];
+  const result = [];
+  const seen = new Set();
+  const regex = /(\d+)(?:\s*-\s*(\d+))?/g;
+  let match;
+  while ((match = regex.exec(str))){
+    let start = Number(match[1]);
+    if (!Number.isFinite(start)) continue;
+    let end = match[2] != null ? Number(match[2]) : start;
+    if (!Number.isFinite(end)) end = start;
+    if (end < start){
+      const tmp = end;
+      end = start;
+      start = tmp;
+    }
+    for (let n = start; n <= end; n++){
+      const idx = n - 1;
+      if (idx < 0 || seen.has(idx)) continue;
+      seen.add(idx);
+      result.push(idx);
+    }
+  }
+  return result;
+}
+
 function buildSegments(row){
   const segments = [];
   if (!row) return segments;
@@ -1227,6 +1293,7 @@ function buildSegments(row){
     const suffix = i === 1 ? '' : `.${i-1}`;
     const textRaw = row[`Tooltip_section${suffix}`];
     const tooltipRaw = row[`Tooltip_Text${suffix}`];
+    const posRaw = row[`Tooltip_${i}_Position`];
     const segText = textRaw ? String(textRaw).trim() : '';
     const tipText = tooltipRaw ? String(tooltipRaw).trim() : '';
     const typeStr = typeRaw ? String(typeRaw).trim() : '';
@@ -1236,6 +1303,8 @@ function buildSegments(row){
     if (category) segment.category = category;
     if (tipText) segment.tooltip = tipText;
     segment.tipNumber = i;
+    const positions = parsePositionList(posRaw);
+    if (positions.length) segment.positions = positions;
     segments.push(segment);
   }
   return segments;
