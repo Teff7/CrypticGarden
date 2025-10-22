@@ -1334,10 +1334,21 @@ function buildSegments(row){
   return segments;
 }
 
+function normalisePositionKey(raw){
+  if (raw == null) return '';
+  let str = String(raw).trim().toUpperCase();
+  if (!str) return '';
+  str = str.replace(/[^A-Z0-9]+/g, ' ');
+  str = str.replace(/\bACROSS\b/g, 'A');
+  str = str.replace(/\bDOWN\b/g, 'D');
+  str = str.replace(/\s+/g, '');
+  return str;
+}
+
 function createPuzzleFromRows(key, rows){
   const entries = [];
   rows.forEach(row => {
-    const pos = String(row.Position || row.position || '').trim().toUpperCase();
+    const pos = normalisePositionKey(row.Position || row.position);
     const layout = POSITION_MAP[pos];
     if (!layout) return;
     const { surface, enumeration } = extractClueParts(row.Clue);
