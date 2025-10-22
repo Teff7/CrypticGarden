@@ -1,5 +1,5 @@
 // Main game logic; starts directly in game view
-const FILE = 'CLUES (3).JSON';
+const FILE = 'CLUES.JSON';
 
 // Elements
 const welcome = document.getElementById('welcome'); // may be null (welcome removed)
@@ -420,6 +420,17 @@ function ensureClueTooltip(){
   el.className = 'clue-tooltip';
   el.setAttribute('role', 'tooltip');
   el.hidden = true;
+  el.addEventListener('pointerenter', () => {
+    if (activeTooltipTarget) applyTooltipHighlights(activeTooltipTarget);
+  });
+  el.addEventListener('pointerleave', (event) => {
+    const next = event.relatedTarget;
+    if (next){
+      if (activeTooltipTarget && (activeTooltipTarget === next || activeTooltipTarget.contains(next))) return;
+      if (clueTextEl && clueTextEl.contains(next)) return;
+    }
+    hideClueTooltip();
+  });
   document.body.appendChild(el);
   clueTooltipEl = el;
   return el;
@@ -451,7 +462,9 @@ function applyTooltipHighlights(target){
   if (!matches.length) return;
   const seen = new Set();
   matches.forEach(raw => {
-    const idx = Number(raw);
+    const pos = Number(raw);
+    if (!Number.isFinite(pos)) return;
+    const idx = pos >= 1 ? pos - 1 : pos;
     if (!Number.isInteger(idx) || idx < 0 || seen.has(idx)) return;
     seen.add(idx);
     const cell = currentEntry.cells[idx];
@@ -655,6 +668,7 @@ function setupTooltipHandlers(){
     if (!activeTooltipTarget) return;
     if (event.relatedTarget && activeTooltipTarget.contains(event.relatedTarget)) return;
     if (event.relatedTarget && event.relatedTarget.closest('[data-tooltip]') === activeTooltipTarget) return;
+    if (event.relatedTarget && clueTooltipEl && clueTooltipEl.contains(event.relatedTarget)) return;
     hideClueTooltip();
   };
 
@@ -687,13 +701,22 @@ function setupTooltipHandlers(){
     positionClueTooltip(activeTooltipTarget);
   };
 
+  const handlePointerLeave = (event) => {
+    if (isMobileTouchActive()) return;
+    const next = event.relatedTarget;
+    if (next){
+      if (activeTooltipTarget && (activeTooltipTarget === next || activeTooltipTarget.contains(next))) return;
+      if (clueTooltipEl && clueTooltipEl.contains(next)) return;
+    }
+    hideClueTooltip();
+  };
+
   clueTextEl.addEventListener('pointerover', handlePointerOver);
   clueTextEl.addEventListener('pointerout', handlePointerOut);
   clueTextEl.addEventListener('pointerdown', handlePointerDown);
   clueTextEl.addEventListener('pointercancel', handlePointerCancel);
-  clueTextEl.addEventListener('pointerleave', handlePointerCancel);
+  clueTextEl.addEventListener('pointerleave', handlePointerLeave);
   clueTextEl.addEventListener('pointercancel', hideClueTooltip);
-  clueTextEl.addEventListener('pointerleave', hideClueTooltip);
   window.addEventListener('scroll', handleScroll, true);
   window.addEventListener('resize', handleScroll);
   const handleDocumentPointerDown = (event) => {
@@ -1205,7 +1228,8 @@ function buildClueMarkup(surface='', segments=[]){
       tooltipAttr = ` data-tooltip="${escapeHtml(tip)}"`;
     }
     if (Array.isArray(seg.positions) && seg.positions.length){
-      cellsAttr = ` data-tip-cells="${seg.positions.join(',')}"`;
+      const cells = seg.positions.map(idx => Number(idx) + 1).filter(n => Number.isFinite(n));
+      if (cells.length) cellsAttr = ` data-tip-cells="${cells.join(',')}"`;
     }
     html += `<span class="${classNames.join(' ')}"${tooltipAttr}${cellsAttr}>${escapeHtml(segmentText)}</span>`;
     cursor = match.end;
