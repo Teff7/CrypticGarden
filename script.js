@@ -371,7 +371,7 @@ function buildShareText(){
       const cell = grid[r][c];
       let emoji = '⬛';
       if (!cell.block){
-        if (cell.isGrey) emoji = '⬜';
+        if (cell.isGrey) emoji = '🟩';
         else if (cell.baseColour === 'green') emoji = '🟩';
         else if (cell.baseColour === 'yellow') emoji = '🟨';
         else if (cell.baseColour === 'purple') emoji = '🟪';
