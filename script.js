@@ -278,7 +278,7 @@ function onHintUsed(clueId, type){
   if (!ent) return;
 
   if (!hintPromptShown && type === 'analyse'){
-    const hasInteractiveTips = !!(ent.clue && Array.isArray(ent.clue.segments) && ent.clue.segments.some(seg => seg && (seg.tooltip || (seg.category && TIP[seg.category]))));
+    const hasInteractiveTips = !!(ent.clue && Array.isArray(ent.clue.segments) && ent.clue.segments.some(seg => seg && seg.tooltip));
     if (hasInteractiveTips){
       showHintPrompt();
       hintPromptShown = true;
@@ -1216,8 +1216,10 @@ function buildClueMarkup(surface='', segments=[]){
       html += escapeHtml(text.slice(cursor, match.start));
     }
     const seg = match.seg || {};
-    const cls = seg.type === 'definition' ? 'def' : seg.type;
-    const tip = seg.tooltip || (seg.category && TIP[seg.category]) || '';
+    // Rendering honours the same binary rule: definition spans keep the def class,
+    // everything else uses the shared indicator styling/behaviour.
+    const cls = seg.type === 'definition' ? 'def' : 'indicator';
+    const tip = seg.tooltip || '';
     const segmentText = text.slice(match.start, match.end);
     const classNames = [cls];
     let tooltipAttr = '';
@@ -1264,21 +1266,10 @@ function extractClueParts(raw){
 }
 
 function interpretSegmentType(raw){
+  // Tooltip segments now follow a binary rule: only "definition" is special, all
+  // other values collapse to the generic indicator styling/behaviour.
   const lower = String(raw || '').trim().toLowerCase();
-  if (!lower) return { type: 'indicator', category: null };
-  if (lower === 'definition') return { type: 'definition', category: null };
-  if (lower === 'fodder') return { type: 'fodder', category: null };
-  let category = lower;
-  if (category.endsWith(' indicator')) category = category.replace(/\s+indicator$/, '');
-  if (category === 'letter substitution') category = 'substitution';
-  if (category === 'double definition') category = 'double';
-  if (category === 'literally') category = 'lit';
-  if (category === 'selection indicator') category = 'selection';
-  if (!category) category = lower;
-  if (category === 'charade'){
-    return { type: 'fodder', category };
-  }
-  return { type: 'indicator', category };
+  return lower === 'definition' ? 'definition' : 'indicator';
 }
 
 function parsePositionList(raw){
@@ -1363,10 +1354,10 @@ function buildSegments(row){
     const segText = textRaw ? String(textRaw).trim() : '';
     const tipText = tooltipRaw ? String(tooltipRaw).trim() : '';
     const typeStr = typeRaw ? String(typeRaw).trim() : '';
-    if (!typeStr && !segText) continue;
-    const { type, category } = interpretSegmentType(typeStr);
+    if (!segText) continue;
+    const type = interpretSegmentType(typeStr);
+    // Each slot with text becomes either a definition or a generic indicator span.
     const segment = { type, text: segText };
-    if (category) segment.category = category;
     if (tipText) segment.tooltip = tipText;
     segment.tipNumber = i;
     const positions = parsePositionList(posRaw);
