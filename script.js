@@ -1,5 +1,5 @@
 // Main game logic; starts directly in game view
-const FILE = 'CLUES (3).JSON';
+const FILE = 'CLUES.JSON';
 
 // Elements
 const welcome = document.getElementById('welcome'); // may be null (welcome removed)
@@ -67,6 +67,7 @@ let hintPromptDismissHandler = null;
 let hintPromptShown = false;
 let hintPromptViewportHandler = null;
 let skipTooltipPointerDownId = null;
+let tooltipHighlightCells = [];
 
 const TIP = {
   acrostic: 'Take first letters.',
@@ -370,7 +371,7 @@ function buildShareText(){
       const cell = grid[r][c];
       let emoji = '⬛';
       if (!cell.block){
-        if (cell.isGrey) emoji = '⬜';
+        if (cell.isGrey) emoji = '🟩';
         else if (cell.baseColour === 'green') emoji = '🟩';
         else if (cell.baseColour === 'yellow') emoji = '🟨';
         else if (cell.baseColour === 'purple') emoji = '🟪';
@@ -419,6 +420,17 @@ function ensureClueTooltip(){
   el.className = 'clue-tooltip';
   el.setAttribute('role', 'tooltip');
   el.hidden = true;
+  el.addEventListener('pointerenter', () => {
+    if (activeTooltipTarget) applyTooltipHighlights(activeTooltipTarget);
+  });
+  el.addEventListener('pointerleave', (event) => {
+    const next = event.relatedTarget;
+    if (next){
+      if (activeTooltipTarget && (activeTooltipTarget === next || activeTooltipTarget.contains(next))) return;
+      if (clueTextEl && clueTextEl.contains(next)) return;
+    }
+    hideClueTooltip();
+  });
   document.body.appendChild(el);
   clueTooltipEl = el;
   return el;
@@ -430,6 +442,37 @@ function hideClueTooltip(){
   el.hidden = true;
   activeTooltipTarget = null;
   skipTooltipPointerDownId = null;
+  clearTooltipHighlights();
+}
+
+function clearTooltipHighlights(){
+  if (!tooltipHighlightCells.length) return;
+  tooltipHighlightCells.forEach(cell => {
+    if (cell && cell.el) cell.el.classList.remove('tooltip-highlight');
+  });
+  tooltipHighlightCells = [];
+}
+
+function applyTooltipHighlights(target){
+  clearTooltipHighlights();
+  if (!target || !currentEntry) return;
+  const attr = target.getAttribute('data-tip-cells');
+  if (!attr) return;
+  const matches = attr.match(/\d+/g) || [];
+  if (!matches.length) return;
+  const seen = new Set();
+  matches.forEach(raw => {
+    const pos = Number(raw);
+    if (!Number.isFinite(pos)) return;
+    const idx = pos >= 1 ? pos - 1 : pos;
+    if (!Number.isInteger(idx) || idx < 0 || seen.has(idx)) return;
+    seen.add(idx);
+    const cell = currentEntry.cells[idx];
+    if (cell && cell.el){
+      cell.el.classList.add('tooltip-highlight');
+      tooltipHighlightCells.push(cell);
+    }
+  });
 }
 
 function ensureHintPrompt(){
@@ -552,7 +595,10 @@ function resetHintPrompt(){
 }
 
 function positionClueTooltip(target){
-  if (!target) return;
+  if (!target){
+    hideClueTooltip();
+    return;
+  }
   if (!document.body.contains(target)){
     hideClueTooltip();
     return;
@@ -565,6 +611,7 @@ function positionClueTooltip(target){
   }
   tooltip.textContent = text;
   tooltip.hidden = false;
+  applyTooltipHighlights(target);
   tooltip.style.left = '0px';
   tooltip.style.top = '0px';
   const viewport = window.visualViewport;
@@ -621,6 +668,7 @@ function setupTooltipHandlers(){
     if (!activeTooltipTarget) return;
     if (event.relatedTarget && activeTooltipTarget.contains(event.relatedTarget)) return;
     if (event.relatedTarget && event.relatedTarget.closest('[data-tooltip]') === activeTooltipTarget) return;
+    if (event.relatedTarget && clueTooltipEl && clueTooltipEl.contains(event.relatedTarget)) return;
     hideClueTooltip();
   };
 
@@ -653,13 +701,22 @@ function setupTooltipHandlers(){
     positionClueTooltip(activeTooltipTarget);
   };
 
+  const handlePointerLeave = (event) => {
+    if (isMobileTouchActive()) return;
+    const next = event.relatedTarget;
+    if (next){
+      if (activeTooltipTarget && (activeTooltipTarget === next || activeTooltipTarget.contains(next))) return;
+      if (clueTooltipEl && clueTooltipEl.contains(next)) return;
+    }
+    hideClueTooltip();
+  };
+
   clueTextEl.addEventListener('pointerover', handlePointerOver);
   clueTextEl.addEventListener('pointerout', handlePointerOut);
   clueTextEl.addEventListener('pointerdown', handlePointerDown);
   clueTextEl.addEventListener('pointercancel', handlePointerCancel);
-  clueTextEl.addEventListener('pointerleave', handlePointerCancel);
+  clueTextEl.addEventListener('pointerleave', handlePointerLeave);
   clueTextEl.addEventListener('pointercancel', hideClueTooltip);
-  clueTextEl.addEventListener('pointerleave', hideClueTooltip);
   window.addEventListener('scroll', handleScroll, true);
   window.addEventListener('resize', handleScroll);
   const handleDocumentPointerDown = (event) => {
@@ -1164,12 +1221,17 @@ function buildClueMarkup(surface='', segments=[]){
     const segmentText = text.slice(match.start, match.end);
     const classNames = [cls];
     let tooltipAttr = '';
+    let cellsAttr = '';
     if (tip){
       classNames.push('has-tip');
       if (seg.tipNumber != null) classNames.push(`tip-${seg.tipNumber}`);
       tooltipAttr = ` data-tooltip="${escapeHtml(tip)}"`;
     }
-    html += `<span class="${classNames.join(' ')}"${tooltipAttr}>${escapeHtml(segmentText)}</span>`;
+    if (Array.isArray(seg.positions) && seg.positions.length){
+      const cells = seg.positions.map(idx => Number(idx) + 1).filter(n => Number.isFinite(n));
+      if (cells.length) cellsAttr = ` data-tip-cells="${cells.join(',')}"`;
+    }
+    html += `<span class="${classNames.join(' ')}"${tooltipAttr}${cellsAttr}>${escapeHtml(segmentText)}</span>`;
     cursor = match.end;
   });
   if (cursor < text.length){
@@ -1219,14 +1281,85 @@ function interpretSegmentType(raw){
   return { type: 'indicator', category };
 }
 
+function parsePositionList(raw){
+  if (raw == null) return [];
+  const str = String(raw).trim();
+  if (!str) return [];
+  const result = [];
+  const seen = new Set();
+  const regex = /(\d+)(?:\s*-\s*(\d+))?/g;
+  let match;
+  while ((match = regex.exec(str))){
+    let start = Number(match[1]);
+    if (!Number.isFinite(start)) continue;
+    let end = match[2] != null ? Number(match[2]) : start;
+    if (!Number.isFinite(end)) end = start;
+    if (end < start){
+      const tmp = end;
+      end = start;
+      start = tmp;
+    }
+    for (let n = start; n <= end; n++){
+      const idx = n - 1;
+      if (idx < 0 || seen.has(idx)) continue;
+      seen.add(idx);
+      result.push(idx);
+    }
+  }
+  return result;
+}
+
+function readTooltipField(row, index, field, suffix){
+  if (!row) return null;
+  const variants = [];
+  const lower = field.toLowerCase();
+  const upper = field.toUpperCase();
+  const capital = field.charAt(0).toUpperCase() + field.slice(1);
+  const forms = [field, lower, upper, capital];
+  const seen = new Set();
+  const add = (key) => {
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    variants.push(key);
+  };
+
+  if (index != null){
+    forms.forEach(form => add(`Tooltip_${index}_${form}`));
+  }
+
+  if (suffix != null){
+    forms.forEach(form => add(`Tooltip_${form}${suffix}`));
+  } else {
+    forms.forEach(form => add(`Tooltip_${form}`));
+  }
+
+  if (index != null){
+    forms.forEach(form => add(`Tooltip_${form}_${index}`));
+    if (index > 1){
+      const alt = index - 1;
+      forms.forEach(form => add(`Tooltip_${form}.${alt}`));
+      forms.forEach(form => add(`Tooltip_${form}_${alt}`));
+    }
+  }
+
+  for (const key of variants){
+    if (Object.prototype.hasOwnProperty.call(row, key)){
+      const value = row[key];
+      if (value != null && String(value).trim() !== '') return value;
+    }
+  }
+  return null;
+}
+
 function buildSegments(row){
   const segments = [];
   if (!row) return segments;
   for (let i = 1; i <= 6; i++){
-    const typeRaw = row[`Tooltip_${i}_type`];
     const suffix = i === 1 ? '' : `.${i-1}`;
-    const textRaw = row[`Tooltip_section${suffix}`];
-    const tooltipRaw = row[`Tooltip_Text${suffix}`];
+    const typeRaw = readTooltipField(row, i, 'type', suffix);
+    const textRaw = readTooltipField(row, i, 'section', suffix);
+    const tooltipRaw = readTooltipField(row, i, 'text', suffix);
+    const posRaw = readTooltipField(row, i, 'Position', suffix);
     const segText = textRaw ? String(textRaw).trim() : '';
     const tipText = tooltipRaw ? String(tooltipRaw).trim() : '';
     const typeStr = typeRaw ? String(typeRaw).trim() : '';
@@ -1236,15 +1369,28 @@ function buildSegments(row){
     if (category) segment.category = category;
     if (tipText) segment.tooltip = tipText;
     segment.tipNumber = i;
+    const positions = parsePositionList(posRaw);
+    if (positions.length) segment.positions = positions;
     segments.push(segment);
   }
   return segments;
 }
 
+function normalisePositionKey(raw){
+  if (raw == null) return '';
+  let str = String(raw).trim().toUpperCase();
+  if (!str) return '';
+  str = str.replace(/[^A-Z0-9]+/g, ' ');
+  str = str.replace(/\bACROSS\b/g, 'A');
+  str = str.replace(/\bDOWN\b/g, 'D');
+  str = str.replace(/\s+/g, '');
+  return str;
+}
+
 function createPuzzleFromRows(key, rows){
   const entries = [];
   rows.forEach(row => {
-    const pos = String(row.Position || row.position || '').trim().toUpperCase();
+    const pos = normalisePositionKey(row.Position || row.position);
     const layout = POSITION_MAP[pos];
     if (!layout) return;
     const { surface, enumeration } = extractClueParts(row.Clue);
