@@ -42,8 +42,21 @@ const btnGiveUp = document.getElementById('btnGiveUp');
 const shareModal = document.getElementById('shareModal');
 const shareClose = document.getElementById('shareClose');
 const shareGrid = document.getElementById('shareGrid');
+const resultsBody = document.getElementById('resultsBody');
+const resultsHeading = document.getElementById('shareHeading');
+const resultsTranslation = document.getElementById('shareSubheading');
+const btnViewResult = document.getElementById('btnViewResult');
 const btnCopyResult = document.getElementById('copyResult');
 const copyToast = document.getElementById('copyToast');
+
+const NO_COMMENT_TEXT = '(No setter\u2019s comment provided)';
+const CELEBRATION_MESSAGES = [
+  { mi: 'Ka pai!', en: 'Good job!' },
+  { mi: 'Tino pai!', en: 'Very good!' },
+  { mi: 'M\u012bharo!', en: 'Amazing!' },
+  { mi: 'Tau k\u0113!', en: 'Awesome!' },
+  { mi: 'Ka rawe!', en: 'Excellent!' }
+];
 
 const mobileBehaviours = createMobileBehaviours();
 
@@ -68,6 +81,7 @@ let hintPromptShown = false;
 let hintPromptViewportHandler = null;
 let skipTooltipPointerDownId = null;
 let tooltipHighlightCells = [];
+let completionMessage = null;
 
 const TIP = {
   acrostic: 'Take first letters.',
@@ -185,6 +199,7 @@ function placeEntries(){
     col: e.col,
     answer: (e.answer || '').toUpperCase(),
     clue: e.clue,
+    setterComment: e.setterComment || '',
     enumeration: e.enumeration || null,
     cells: [],
     iActive: 0,
@@ -331,21 +346,51 @@ function checkForCompletion(){
   }
 }
 
+function pickCelebrationMessage(){
+  if (!CELEBRATION_MESSAGES.length) return null;
+  const index = Math.floor(Math.random() * CELEBRATION_MESSAGES.length);
+  return CELEBRATION_MESSAGES[index];
+}
+
+function applyCompletionMessage(message){
+  if (resultsHeading){
+    resultsHeading.textContent = message && message.mi ? message.mi : 'Crossword results';
+  }
+  if (resultsTranslation){
+    if (message && message.en){
+      resultsTranslation.textContent = message.en;
+      resultsTranslation.hidden = false;
+    } else {
+      resultsTranslation.textContent = '';
+      resultsTranslation.hidden = true;
+    }
+  }
+}
+
 function onPuzzleComplete(){
+  updateCompletionUi(true);
+  completionMessage = pickCelebrationMessage();
+  applyCompletionMessage(completionMessage);
+  populateResultsModal();
   renderSharePreview();
+  if (btnViewResult){
+    btnViewResult.focus();
+  }
+  mobileBehaviours.hideKeyboard();
   openShareModal();
   finishGame();
 }
 
 // Build the share preview grid shown in the modal
 function renderSharePreview(){
-  if (!shareGrid || !puzzle) return;
+  if (!shareGrid || !puzzle || !puzzle.grid) return;
   const { rows, cols } = puzzle.grid;
   shareGrid.innerHTML = '';
+  if (!rows || !cols) return;
   shareGrid.style.gridTemplateColumns = `repeat(${cols},16px)`;
   shareGrid.style.gridTemplateRows = `repeat(${rows},16px)`;
-  for (let r=0;r<rows;r++){
-    for (let c=0;c<cols;c++){
+  for (let r = 0; r < rows; r++){
+    for (let c = 0; c < cols; c++){
       const cell = grid[r][c];
       const d = document.createElement('div');
       d.className = 'share-cell';
@@ -363,11 +408,12 @@ function renderSharePreview(){
 
 // Assemble plain-text emoji grid for clipboard sharing
 function buildShareText(){
+  if (!puzzle || !puzzle.grid) return '';
   const { rows, cols } = puzzle.grid;
   const lines = [];
-  for (let r=0;r<rows;r++){
+  for (let r = 0; r < rows; r++){
     let line = '';
-    for (let c=0;c<cols;c++){
+    for (let c = 0; c < cols; c++){
       const cell = grid[r][c];
       let emoji = '⬛';
       if (!cell.block){
@@ -412,6 +458,70 @@ function closeShareModal(){
   if (lastFocused) lastFocused.focus();
 
   renderLetters();
+}
+
+function populateResultsModal(){
+  if (!resultsBody) return;
+  resultsBody.innerHTML = '';
+  const fragment = document.createDocumentFragment();
+  POSITION_ORDER.forEach(id => {
+    const ent = entries.find(e => e.id === id);
+    if (!ent) return;
+    const row = document.createElement('div');
+    row.className = 'result-entry';
+    row.setAttribute('role', 'listitem');
+
+    const label = document.createElement('span');
+    label.className = 'result-label';
+    label.textContent = ent.id;
+    row.appendChild(label);
+
+    const answerSpan = document.createElement('span');
+    answerSpan.className = 'result-answer';
+    const strong = document.createElement('strong');
+    strong.textContent = ent.answer || '';
+    answerSpan.appendChild(strong);
+    answerSpan.appendChild(document.createTextNode(': '));
+    row.appendChild(answerSpan);
+
+    const commentSpan = document.createElement('span');
+    commentSpan.className = 'result-comment';
+    const comment = ent.setterComment && ent.setterComment.trim() ? ent.setterComment.trim() : NO_COMMENT_TEXT;
+    commentSpan.textContent = comment;
+    row.appendChild(commentSpan);
+
+    fragment.appendChild(row);
+  });
+
+  if (!fragment.childNodes.length){
+    const fallback = document.createElement('p');
+    fallback.textContent = 'Results unavailable.';
+    resultsBody.appendChild(fallback);
+    return;
+  }
+
+  resultsBody.appendChild(fragment);
+}
+
+function updateCompletionUi(completed){
+  if (completed){
+    closeHintDropdown();
+    if (hintDropdown) hintDropdown.hidden = true;
+    if (btnGiveUp) btnGiveUp.hidden = true;
+    if (btnHelpBottom) btnHelpBottom.hidden = true;
+    if (btnViewResult){
+      btnViewResult.hidden = false;
+      btnViewResult.removeAttribute('aria-hidden');
+    }
+  } else {
+    if (hintDropdown) hintDropdown.hidden = false;
+    if (btnGiveUp) btnGiveUp.hidden = false;
+    if (btnHelpBottom) btnHelpBottom.hidden = false;
+    if (btnViewResult){
+      btnViewResult.hidden = true;
+      btnViewResult.setAttribute('aria-hidden', 'true');
+    }
+  }
 }
 
 function ensureClueTooltip(){
@@ -759,6 +869,10 @@ function renderClue(ent){
   const num = ent.id.match(/^\d+/)[0];
   clueHeaderEl.textContent = `${num} ${dirLabel}`;  // “1 Across” / “1 Down”
   clueTextEl.innerHTML = html;
+  if (puzzleFinished && ent.hintState){
+    ent.hintState.definition = true;
+    ent.hintState.analyse = true;
+  }
   applyHintClasses(ent);
 }
 
@@ -848,7 +962,7 @@ function handleCellClick(k){
 
   if (isEntrySolved(ent)){
     mobileBehaviours.hideKeyboard();
-    return;
+    if (!puzzleFinished) return;
   }
 
   dirToggle.set(k, ent.direction);
@@ -1080,12 +1194,23 @@ function setupHandlers(){
   if (shareClose) shareClose.addEventListener('click', closeShareModal);
   if (btnCopyResult) btnCopyResult.addEventListener('click', () => {
     const text = buildShareText();
+    if (!text) return;
     navigator.clipboard.writeText(text).then(() => {
       if (copyToast){
         copyToast.hidden = false;
         setTimeout(() => { copyToast.hidden = true; }, 1500);
       }
-    });
+    }).catch(() => {});
+  });
+  if (btnViewResult) btnViewResult.addEventListener('click', () => {
+    if (!puzzleFinished) return;
+    populateResultsModal();
+    if (!completionMessage) completionMessage = pickCelebrationMessage();
+    applyCompletionMessage(completionMessage);
+    renderSharePreview();
+    btnViewResult.focus();
+    mobileBehaviours.hideKeyboard();
+    openShareModal();
   });
 
   // Close dropdowns when clicking outside
@@ -1158,8 +1283,13 @@ function restartGame(){
     }
   });
   puzzleFinished = false;
+  updateCompletionUi(false);
   if (shareModal) shareModal.hidden = true;
   if (copyToast) copyToast.hidden = true;
+  if (shareGrid) shareGrid.innerHTML = '';
+  if (resultsBody) resultsBody.innerHTML = '';
+  completionMessage = null;
+  applyCompletionMessage(null);
   const fireworks = document.getElementById('fireworks');
   if (fireworks) fireworks.classList.remove('on');
 
@@ -1394,6 +1524,9 @@ function createPuzzleFromRows(key, rows){
     const layout = POSITION_MAP[pos];
     if (!layout) return;
     const { surface, enumeration } = extractClueParts(row.Clue);
+    const commentRaw = row.Setters_Comment ?? row.SettersComment ?? row.SetterComment ?? row['Setter Comment'] ?? row["Setter's Comment"] ?? row['Setter’s Comment'] ?? row['Setters Comment'];
+    const setterComment = commentRaw != null ? String(commentRaw).trim() : '';
+
     entries.push({
       id: layout.id,
       direction: layout.direction,
@@ -1404,7 +1537,8 @@ function createPuzzleFromRows(key, rows){
         surface,
         segments: buildSegments(row)
       },
-      enumeration: enumeration || null
+      enumeration: enumeration || null,
+      setterComment
     });
   });
 
@@ -1501,9 +1635,12 @@ function applyPuzzle(data){
   lastClickedCellKey = null;
   dirToggle.clear();
   puzzleFinished = false;
+  updateCompletionUi(false);
   if (shareModal) shareModal.hidden = true;
   if (copyToast) copyToast.hidden = true;
-  if (shareGrid) shareGrid.innerHTML = '';
+  if (resultsBody) resultsBody.innerHTML = '';
+  completionMessage = null;
+  applyCompletionMessage(null);
   const fireworks = document.getElementById('fireworks');
   if (fireworks) fireworks.classList.remove('on');
   if (clueTextEl) {
@@ -1527,12 +1664,12 @@ function useFallbackPuzzle(){
     title: 'Fallback Puzzle',
     grid: cloneGridTemplate(),
     entries: [
-      { id: '1A', direction: 'across', row: 0, col: 0, answer: 'DISCO', clue: { surface: 'Dance floor genre', segments: [] }, enumeration: '5' },
-      { id: '2A', direction: 'across', row: 2, col: 0, answer: 'INANE', clue: { surface: 'Silly or senseless', segments: [] }, enumeration: '5' },
-      { id: '3A', direction: 'across', row: 4, col: 0, answer: 'TAROT', clue: { surface: 'Cards for fortunes', segments: [] }, enumeration: '5' },
-      { id: '1D', direction: 'down', row: 0, col: 0, answer: 'DRIFT', clue: { surface: 'Move with the tide', segments: [] }, enumeration: '5' },
-      { id: '2D', direction: 'down', row: 0, col: 2, answer: 'STAIR', clue: { surface: 'Single step', segments: [] }, enumeration: '5' },
-      { id: '3D', direction: 'down', row: 0, col: 4, answer: 'OVERT', clue: { surface: 'Plain to see', segments: [] }, enumeration: '5' }
+      { id: '1A', direction: 'across', row: 0, col: 0, answer: 'DISCO', clue: { surface: 'Dance floor genre', segments: [] }, enumeration: '5', setterComment: '' },
+      { id: '2A', direction: 'across', row: 2, col: 0, answer: 'INANE', clue: { surface: 'Silly or senseless', segments: [] }, enumeration: '5', setterComment: '' },
+      { id: '3A', direction: 'across', row: 4, col: 0, answer: 'TAROT', clue: { surface: 'Cards for fortunes', segments: [] }, enumeration: '5', setterComment: '' },
+      { id: '1D', direction: 'down', row: 0, col: 0, answer: 'DRIFT', clue: { surface: 'Move with the tide', segments: [] }, enumeration: '5', setterComment: '' },
+      { id: '2D', direction: 'down', row: 0, col: 2, answer: 'STAIR', clue: { surface: 'Single step', segments: [] }, enumeration: '5', setterComment: '' },
+      { id: '3D', direction: 'down', row: 0, col: 4, answer: 'OVERT', clue: { surface: 'Plain to see', segments: [] }, enumeration: '5', setterComment: '' }
     ]
   }];
   currentPuzzleIndex = 0;
