@@ -349,6 +349,30 @@ body.mobile-touch.mobile-keyboard-open{
 .result-comment{
   flex:1;
 }
+
+.share-grid{
+  display:grid;
+  grid-template-columns:repeat(5,1fr);
+  grid-auto-rows:1fr;
+  gap:2px;
+  width:min(80vw,250px);
+  aspect-ratio:1;
+  align-self:center;
+  margin:0.5rem auto;
+  place-content:center;
+}
+
+.share-cell{
+  width:100%;
+  aspect-ratio:1;
+}
+
+.share-actions{
+  display:flex;
+  flex-wrap:wrap;
+  gap:0.5rem;
+  justify-content:center;
+}
 .help-body{
   width:100%;
   margin-top:1rem;

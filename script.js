@@ -41,9 +41,11 @@ const btnGiveUp = document.getElementById('btnGiveUp');
 // Share modal elements
 const shareModal = document.getElementById('shareModal');
 const shareClose = document.getElementById('shareClose');
+const shareGrid = document.getElementById('shareGrid');
 const resultsBody = document.getElementById('resultsBody');
 const resultsHeading = document.getElementById('shareHeading');
 const btnViewResult = document.getElementById('btnViewResult');
+const btnCopyResult = document.getElementById('copyResult');
 const copyToast = document.getElementById('copyToast');
 
 const NO_COMMENT_TEXT = '(No setter\u2019s comment provided)';
@@ -339,12 +341,64 @@ function onPuzzleComplete(){
   updateCompletionUi(true);
   if (resultsHeading) resultsHeading.textContent = 'Congratulations!';
   populateResultsModal();
+  renderSharePreview();
   if (btnViewResult){
     btnViewResult.focus();
   }
   mobileBehaviours.hideKeyboard();
   openShareModal();
   finishGame();
+}
+
+// Build the share preview grid shown in the modal
+function renderSharePreview(){
+  if (!shareGrid || !puzzle || !puzzle.grid) return;
+  const { rows, cols } = puzzle.grid;
+  shareGrid.innerHTML = '';
+  if (!rows || !cols) return;
+  shareGrid.style.gridTemplateColumns = `repeat(${cols},16px)`;
+  shareGrid.style.gridTemplateRows = `repeat(${rows},16px)`;
+  for (let r = 0; r < rows; r++){
+    for (let c = 0; c < cols; c++){
+      const cell = grid[r][c];
+      const d = document.createElement('div');
+      d.className = 'share-cell';
+      let bg = '#000';
+      if (!cell.block){
+        if (cell.isGrey) bg = HINT_COLOUR_VALUE;
+        else if (cell.baseColour !== 'none') bg = BASE_COLOUR_VALUES[cell.baseColour];
+        else bg = '#fff';
+      }
+      d.style.background = bg;
+      shareGrid.appendChild(d);
+    }
+  }
+}
+
+// Assemble plain-text emoji grid for clipboard sharing
+function buildShareText(){
+  if (!puzzle || !puzzle.grid) return '';
+  const { rows, cols } = puzzle.grid;
+  const lines = [];
+  for (let r = 0; r < rows; r++){
+    let line = '';
+    for (let c = 0; c < cols; c++){
+      const cell = grid[r][c];
+      let emoji = '⬛';
+      if (!cell.block){
+        if (cell.isGrey) emoji = '🟩';
+        else if (cell.baseColour === 'green') emoji = '🟩';
+        else if (cell.baseColour === 'yellow') emoji = '🟨';
+        else if (cell.baseColour === 'purple') emoji = '🟪';
+        else emoji = '⬜';
+      }
+      line += emoji;
+    }
+    lines.push(line);
+  }
+  lines.push('I beat the cryptic crossword! Can you?');
+  lines.push('https://cryptic-garden.vercel.app/');
+  return lines.join('\n');
 }
 
 let lastFocused = null;
@@ -1107,10 +1161,21 @@ function setupHandlers(){
 
   // Share modal handlers
   if (shareClose) shareClose.addEventListener('click', closeShareModal);
+  if (btnCopyResult) btnCopyResult.addEventListener('click', () => {
+    const text = buildShareText();
+    if (!text) return;
+    navigator.clipboard.writeText(text).then(() => {
+      if (copyToast){
+        copyToast.hidden = false;
+        setTimeout(() => { copyToast.hidden = true; }, 1500);
+      }
+    }).catch(() => {});
+  });
   if (btnViewResult) btnViewResult.addEventListener('click', () => {
     if (!puzzleFinished) return;
     populateResultsModal();
     if (resultsHeading) resultsHeading.textContent = 'Congratulations!';
+    renderSharePreview();
     btnViewResult.focus();
     mobileBehaviours.hideKeyboard();
     openShareModal();
@@ -1189,6 +1254,7 @@ function restartGame(){
   updateCompletionUi(false);
   if (shareModal) shareModal.hidden = true;
   if (copyToast) copyToast.hidden = true;
+  if (shareGrid) shareGrid.innerHTML = '';
   if (resultsBody) resultsBody.innerHTML = '';
   const fireworks = document.getElementById('fireworks');
   if (fireworks) fireworks.classList.remove('on');
