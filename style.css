@@ -312,6 +312,16 @@ body.mobile-touch.mobile-keyboard-open{
   gap:1rem;
 }
 
+#shareHeading,
+#shareSubheading{
+  align-self:center;
+  text-align:center;
+}
+
+#shareHeading{
+  margin:0;
+}
+
 .results-translation{
   margin:-0.5rem 0 0;
   font-style:italic;
