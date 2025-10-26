@@ -312,6 +312,12 @@ body.mobile-touch.mobile-keyboard-open{
   gap:1rem;
 }
 
+.results-translation{
+  margin:-0.5rem 0 0;
+  font-style:italic;
+  color:#d8d8d8;
+}
+
 .results-lede{
   margin:0;
   color:#f0f0f0;
@@ -358,7 +364,7 @@ body.mobile-touch.mobile-keyboard-open{
   width:min(80vw,250px);
   aspect-ratio:1;
   align-self:center;
-  margin:0.5rem auto;
+  margin:0 auto 0.5rem;
   place-content:center;
 }
 

@@ -44,11 +44,19 @@ const shareClose = document.getElementById('shareClose');
 const shareGrid = document.getElementById('shareGrid');
 const resultsBody = document.getElementById('resultsBody');
 const resultsHeading = document.getElementById('shareHeading');
+const resultsTranslation = document.getElementById('shareSubheading');
 const btnViewResult = document.getElementById('btnViewResult');
 const btnCopyResult = document.getElementById('copyResult');
 const copyToast = document.getElementById('copyToast');
 
 const NO_COMMENT_TEXT = '(No setter\u2019s comment provided)';
+const CELEBRATION_MESSAGES = [
+  { mi: 'Ka pai!', en: 'Good job!' },
+  { mi: 'Tino pai!', en: 'Very good!' },
+  { mi: 'M\u012bharo!', en: 'Amazing!' },
+  { mi: 'Tau k\u0113!', en: 'Awesome!' },
+  { mi: 'Ka rawe!', en: 'Excellent!' }
+];
 
 const mobileBehaviours = createMobileBehaviours();
 
@@ -73,6 +81,7 @@ let hintPromptShown = false;
 let hintPromptViewportHandler = null;
 let skipTooltipPointerDownId = null;
 let tooltipHighlightCells = [];
+let completionMessage = null;
 
 const TIP = {
   acrostic: 'Take first letters.',
@@ -337,9 +346,31 @@ function checkForCompletion(){
   }
 }
 
+function pickCelebrationMessage(){
+  if (!CELEBRATION_MESSAGES.length) return null;
+  const index = Math.floor(Math.random() * CELEBRATION_MESSAGES.length);
+  return CELEBRATION_MESSAGES[index];
+}
+
+function applyCompletionMessage(message){
+  if (resultsHeading){
+    resultsHeading.textContent = message && message.mi ? message.mi : 'Crossword results';
+  }
+  if (resultsTranslation){
+    if (message && message.en){
+      resultsTranslation.textContent = message.en;
+      resultsTranslation.hidden = false;
+    } else {
+      resultsTranslation.textContent = '';
+      resultsTranslation.hidden = true;
+    }
+  }
+}
+
 function onPuzzleComplete(){
   updateCompletionUi(true);
-  if (resultsHeading) resultsHeading.textContent = 'Congratulations!';
+  completionMessage = pickCelebrationMessage();
+  applyCompletionMessage(completionMessage);
   populateResultsModal();
   renderSharePreview();
   if (btnViewResult){
@@ -1174,7 +1205,8 @@ function setupHandlers(){
   if (btnViewResult) btnViewResult.addEventListener('click', () => {
     if (!puzzleFinished) return;
     populateResultsModal();
-    if (resultsHeading) resultsHeading.textContent = 'Congratulations!';
+    if (!completionMessage) completionMessage = pickCelebrationMessage();
+    applyCompletionMessage(completionMessage);
     renderSharePreview();
     btnViewResult.focus();
     mobileBehaviours.hideKeyboard();
@@ -1256,6 +1288,8 @@ function restartGame(){
   if (copyToast) copyToast.hidden = true;
   if (shareGrid) shareGrid.innerHTML = '';
   if (resultsBody) resultsBody.innerHTML = '';
+  completionMessage = null;
+  applyCompletionMessage(null);
   const fireworks = document.getElementById('fireworks');
   if (fireworks) fireworks.classList.remove('on');
 
@@ -1605,7 +1639,8 @@ function applyPuzzle(data){
   if (shareModal) shareModal.hidden = true;
   if (copyToast) copyToast.hidden = true;
   if (resultsBody) resultsBody.innerHTML = '';
-  if (resultsHeading) resultsHeading.textContent = 'Congratulations!';
+  completionMessage = null;
+  applyCompletionMessage(null);
   const fireworks = document.getElementById('fireworks');
   if (fireworks) fireworks.classList.remove('on');
   if (clueTextEl) {
