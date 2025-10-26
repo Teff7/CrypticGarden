@@ -1,5 +1,5 @@
 // Main game logic; starts directly in game view
-const FILE = 'CLUES.JSON';
+const DATA_FILE = 'Crosswords_new_format_27_10_2025.json';
 
 // Elements
 const welcome = document.getElementById('welcome'); // may be null (welcome removed)
@@ -1413,10 +1413,27 @@ function interpretSegmentType(raw){
 
 function parsePositionList(raw){
   if (raw == null) return [];
+  if (Array.isArray(raw)){
+    const numbers = raw
+      .map(value => Number(value))
+      .filter(num => Number.isFinite(num));
+    if (!numbers.length) return [];
+    const hasZero = numbers.some(num => num === 0);
+    const offset = hasZero ? 0 : 1;
+    const seen = new Set();
+    const result = [];
+    numbers.forEach(num => {
+      const idx = num - offset;
+      if (idx < 0 || seen.has(idx)) return;
+      seen.add(idx);
+      result.push(idx);
+    });
+    return result;
+  }
+
   const str = String(raw).trim();
   if (!str) return [];
-  const result = [];
-  const seen = new Set();
+  const numbers = [];
   const regex = /(\d+)(?:\s*-\s*(\d+))?/g;
   let match;
   while ((match = regex.exec(str))){
@@ -1430,12 +1447,20 @@ function parsePositionList(raw){
       start = tmp;
     }
     for (let n = start; n <= end; n++){
-      const idx = n - 1;
-      if (idx < 0 || seen.has(idx)) continue;
-      seen.add(idx);
-      result.push(idx);
+      numbers.push(n);
     }
   }
+  if (!numbers.length) return [];
+  const hasZero = numbers.some(num => num === 0);
+  const offset = hasZero ? 0 : 1;
+  const seen = new Set();
+  const result = [];
+  numbers.forEach(num => {
+    const idx = num - offset;
+    if (idx < 0 || seen.has(idx)) return;
+    seen.add(idx);
+    result.push(idx);
+  });
   return result;
 }
 
@@ -1481,7 +1506,7 @@ function readTooltipField(row, index, field, suffix){
   return null;
 }
 
-function buildSegments(row){
+function buildSegmentsLegacy(row){
   const segments = [];
   if (!row) return segments;
   for (let i = 1; i <= 6; i++){
@@ -1504,6 +1529,58 @@ function buildSegments(row){
     segments.push(segment);
   }
   return segments;
+}
+
+function hasNewFormatSegmentFields(row){
+  if (!row || typeof row !== 'object') return false;
+  for (let i = 1; i <= 6; i++){
+    if (Object.prototype.hasOwnProperty.call(row, `Text_${i}`) ||
+        Object.prototype.hasOwnProperty.call(row, `Category_${i}`) ||
+        Object.prototype.hasOwnProperty.call(row, `Tooltip_${i}`) ||
+        Object.prototype.hasOwnProperty.call(row, `Cell_Position_${i}`)){
+      return true;
+    }
+  }
+  return false;
+}
+
+function readNewFormatSegmentField(row, base, index){
+  if (!row || typeof row !== 'object') return null;
+  const forms = [base, base.toLowerCase(), base.toUpperCase()];
+  for (const form of forms){
+    const key = `${form}_${index}`;
+    if (Object.prototype.hasOwnProperty.call(row, key)) return row[key];
+  }
+  return null;
+}
+
+function buildSegmentsNewFormat(row){
+  const segments = [];
+  if (!row) return segments;
+  for (let i = 1; i <= 6; i++){
+    const textRaw = readNewFormatSegmentField(row, 'Text', i);
+    const categoryRaw = readNewFormatSegmentField(row, 'Category', i);
+    const tooltipRaw = readNewFormatSegmentField(row, 'Tooltip', i);
+    const posRaw = readNewFormatSegmentField(row, 'Cell_Position', i);
+    const text = textRaw != null ? String(textRaw).trim() : '';
+    const tipText = tooltipRaw != null ? String(tooltipRaw).trim() : '';
+    const typeStr = categoryRaw != null ? String(categoryRaw).trim() : '';
+    if (!text && !tipText && !typeStr) continue;
+    const { type, category } = interpretSegmentType(typeStr);
+    const segment = { type, text };
+    if (category) segment.category = category;
+    if (tipText) segment.tooltip = tipText;
+    const positions = parsePositionList(posRaw);
+    if (positions.length) segment.positions = positions;
+    segment.tipNumber = i;
+    segments.push(segment);
+  }
+  return segments;
+}
+
+function buildSegments(row){
+  if (hasNewFormatSegmentFields(row)) return buildSegmentsNewFormat(row);
+  return buildSegmentsLegacy(row);
 }
 
 function normalisePositionKey(raw){
@@ -1559,11 +1636,8 @@ function createPuzzleFromRows(key, rows){
   };
 }
 
-function parseWorkbook(json){
-  if (!json || !Array.isArray(json.sheets) || !json.sheets[0] || !Array.isArray(json.sheets[0].rows)) {
-    return [];
-  }
-  const rows = json.sheets[0].rows;
+function groupRowsIntoPuzzles(rows){
+  if (!Array.isArray(rows) || !rows.length) return [];
   const grouped = new Map();
   rows.forEach(row => {
     const keyRaw = row.Crossword ?? row.crossword;
@@ -1579,6 +1653,32 @@ function parseWorkbook(json){
     return String(a).localeCompare(String(b));
   });
   return keys.map(key => createPuzzleFromRows(key, grouped.get(key) || []));
+}
+
+function parseSimpleWorkbook(json){
+  const rows = [];
+  const collectRows = arr => {
+    if (!Array.isArray(arr)) return;
+    arr.forEach(item => {
+      if (item && typeof item === 'object' && (item.Crossword != null || item.crossword != null)){
+        rows.push(item);
+      }
+    });
+  };
+
+  if (Array.isArray(json)){
+    collectRows(json);
+  } else if (json && typeof json === 'object'){
+    Object.keys(json).forEach(key => {
+      collectRows(json[key]);
+    });
+  }
+
+  return groupRowsIntoPuzzles(rows);
+}
+
+function parseWorkbook(json){
+  return parseSimpleWorkbook(json);
 }
 
 function populatePuzzleSelect(){
@@ -1675,6 +1775,32 @@ function useFallbackPuzzle(){
   currentPuzzleIndex = 0;
   populatePuzzleSelect();
   loadPuzzleByIndex(0);
+}
+
+function loadCrosswordsFromFile(file){
+  if (!file){
+    console.error('No crossword data file specified; using fallback data.');
+    useFallbackPuzzle();
+    return;
+  }
+
+  fetch(file)
+    .then(r => {
+      if (!r.ok) throw new Error(`Failed to load ${file}: ${r.status}`);
+      return r.json();
+    })
+    .then(json => {
+      const parsed = parseWorkbook(json);
+      if (!parsed.length) throw new Error('No crossword data found in workbook');
+      puzzles = parsed;
+      currentPuzzleIndex = 0;
+      populatePuzzleSelect();
+      loadPuzzleByIndex(0);
+    })
+    .catch(err => {
+      console.error(`Failed to load crosswords from ${file}:`, err);
+      useFallbackPuzzle();
+    });
 }
 
 function createMobileBehaviours(){
@@ -1889,20 +2015,5 @@ window.addEventListener('load', () => {
   setupHandlers();
   setupTooltipHandlers();
 
-  fetch(FILE)
-    .then(r => {
-      if (!r.ok) throw new Error(`Failed to load ${FILE}: ${r.status}`);
-      return r.json();
-    })
-    .then(json => {
-      puzzles = parseWorkbook(json);
-      if (!puzzles.length) throw new Error('No crossword data found in workbook');
-      currentPuzzleIndex = 0;
-      populatePuzzleSelect();
-      loadPuzzleByIndex(0);
-    })
-    .catch(err => {
-      console.error('Failed to load crosswords, using fallback data:', err);
-      useFallbackPuzzle();
-    });
+  loadCrosswordsFromFile(DATA_FILE);
 });
