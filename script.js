@@ -4,12 +4,15 @@ const DATA_FILE = 'Crosswords_new_format_27_10_2025.json';
 const FLOWER_STORAGE_KEY = 'cg.lastFlowerKey';
 const FLOWER_DATE_KEY = 'cg.lastCompletionISO';
 const FLOWER_FORCE_KEY = 'cg.debugForceFlower';
+const FLOWER_CELL_INDEX_KEY = 'cg.lastFlowerCellIndex';
 
 const FLOWER_INFO = createFlowerInfo();
 
 let totalHintsUsed = 0;
 let usedAnyReveal = false;
 let appliedFlowerKey = null;
+let appliedFlowerIndex = null;
+let flowerCells = [];
 
 // Elements
 const welcome = document.getElementById('welcome'); // may be null (welcome removed)
@@ -56,8 +59,10 @@ const resultsBody = document.getElementById('resultsBody');
 const resultsHeading = document.getElementById('shareHeading');
 const resultsTranslation = document.getElementById('shareSubheading');
 const btnViewResult = document.getElementById('btnViewResult');
+const btnTendGarden = document.getElementById('btnTendGarden');
 const btnCopyResult = document.getElementById('copyResult');
 const copyToast = document.getElementById('copyToast');
+const shareFlower = document.getElementById('shareFlower');
 
 const NO_COMMENT_TEXT = '(No setter\u2019s comment provided)';
 const CELEBRATION_MESSAGES = [
@@ -221,6 +226,16 @@ function setStoredValue(key, value){
   }
 }
 
+function removeStoredValue(key){
+  const storage = getStorage();
+  if (!storage) return;
+  try {
+    storage.removeItem(key);
+  } catch (err) {
+    // Ignore failures when storage isn't available.
+  }
+}
+
 function classifyFlowerKey(hintsUsed, revealUsed){
   if (revealUsed) return 'GUIDED';
   if (hintsUsed === 0) return 'PURE';
@@ -229,13 +244,23 @@ function classifyFlowerKey(hintsUsed, revealUsed){
   return 'GUIDED';
 }
 
-function persistFlowerKey(key){
+function getStoredFlowerIndex(){
+  const value = getStoredValue(FLOWER_CELL_INDEX_KEY);
+  if (value == null) return null;
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
+function persistFlowerState(key, index){
   if (!FLOWER_INFO[key]) return;
   const storage = getStorage();
   if (!storage) return;
   const forced = getStoredValue(FLOWER_FORCE_KEY);
   if (forced && FLOWER_INFO[forced]) return;
   setStoredValue(FLOWER_STORAGE_KEY, key);
+  if (typeof index === 'number' && Number.isFinite(index)){
+    setStoredValue(FLOWER_CELL_INDEX_KEY, String(index));
+  }
   const iso = new Date().toISOString();
   setStoredValue(FLOWER_DATE_KEY, iso);
 }
@@ -249,33 +274,114 @@ function getRenderFlowerKey(preferredKey){
   return null;
 }
 
-function applyFlowerToGrid(key){
-  if (!grid || !grid.length) {
-    appliedFlowerKey = key || null;
+function getRenderFlowerIndex(preferredIndex){
+  if (typeof preferredIndex === 'number' && Number.isFinite(preferredIndex) && preferredIndex >= 0) return preferredIndex;
+  const stored = getStoredFlowerIndex();
+  if (stored != null) return stored;
+  if (typeof appliedFlowerIndex === 'number' && appliedFlowerIndex >= 0) return appliedFlowerIndex;
+  return 0;
+}
+
+function getNextFlowerIndex(currentIndex){
+  const total = flowerCells.length;
+  if (!total) return 0;
+  const base = typeof currentIndex === 'number' && Number.isFinite(currentIndex) ? currentIndex : -1;
+  return (base + 1 + total) % total;
+}
+
+function applyFlowerToGrid(key, index){
+  const hasKey = Boolean(key && FLOWER_INFO[key]);
+  const requestedIndex = typeof index === 'number' && Number.isFinite(index) ? index : appliedFlowerIndex;
+  appliedFlowerKey = hasKey ? key : null;
+
+  if (!grid || !grid.length || !flowerCells.length){
+    if (hasKey && typeof requestedIndex === 'number' && Number.isFinite(requestedIndex)){
+      appliedFlowerIndex = requestedIndex;
+    }
+    updateShareFlower(appliedFlowerKey);
+    updateTendGardenButton();
     return;
   }
-  grid.flat().forEach(cell => {
-    if (!cell.block) return;
+
+  flowerCells.forEach(cell => {
     const existing = cell.el.querySelector('.flower-icon');
     if (existing) existing.remove();
     cell.el.classList.remove('flowered');
-    if (!key || !FLOWER_INFO[key]) return;
-    const info = FLOWER_INFO[key];
-    const icon = document.createElement('div');
-    icon.className = 'flower-icon';
-    icon.dataset.flowerKey = key;
-    icon.setAttribute('role', 'img');
-    icon.setAttribute('aria-label', info.ariaLabel);
-    icon.innerHTML = info.svg;
-    cell.el.appendChild(icon);
-    cell.el.classList.add('flowered');
   });
-  appliedFlowerKey = key || null;
+
+  if (!hasKey) {
+    updateShareFlower(null);
+    updateTendGardenButton();
+    return;
+  }
+
+  const info = FLOWER_INFO[appliedFlowerKey];
+  const normalizedIndex = ((typeof requestedIndex === 'number' && Number.isFinite(requestedIndex) ? requestedIndex : 0) % flowerCells.length + flowerCells.length) % flowerCells.length;
+  const target = flowerCells[normalizedIndex];
+  appliedFlowerIndex = normalizedIndex;
+
+  if (!target || !target.el) {
+    updateShareFlower(appliedFlowerKey);
+    updateTendGardenButton();
+    return;
+  }
+
+  const icon = document.createElement('div');
+  icon.className = 'flower-icon';
+  icon.dataset.flowerKey = appliedFlowerKey;
+  icon.setAttribute('role', 'img');
+  icon.setAttribute('aria-label', info.ariaLabel);
+  icon.innerHTML = info.svg;
+  target.el.appendChild(icon);
+  target.el.classList.add('flowered');
+
+  updateShareFlower(appliedFlowerKey);
+  updateTendGardenButton();
 }
 
-function refreshFlowerIcons(preferredKey){
-  const key = getRenderFlowerKey(preferredKey || appliedFlowerKey || null);
-  applyFlowerToGrid(key);
+function refreshFlowerIcons(preferredKey, preferredIndex){
+  const key = getRenderFlowerKey(preferredKey ?? appliedFlowerKey ?? null);
+  const index = getRenderFlowerIndex(
+    typeof preferredIndex === 'number' && Number.isFinite(preferredIndex) ? preferredIndex : appliedFlowerIndex
+  );
+  applyFlowerToGrid(key, index);
+}
+
+function updateShareFlower(key){
+  if (!shareFlower) return;
+  shareFlower.innerHTML = '';
+  shareFlower.classList.remove('has-flower');
+  shareFlower.removeAttribute('role');
+  shareFlower.removeAttribute('aria-label');
+  shareFlower.setAttribute('aria-hidden', 'true');
+
+  if (!key || !FLOWER_INFO[key]) return;
+
+  const info = FLOWER_INFO[key];
+  shareFlower.classList.add('has-flower');
+  shareFlower.setAttribute('role', 'img');
+  shareFlower.setAttribute('aria-label', info.ariaLabel);
+  shareFlower.removeAttribute('aria-hidden');
+
+  const icon = document.createElement('div');
+  icon.className = 'flower-icon';
+  icon.dataset.flowerKey = key;
+  icon.innerHTML = info.svg;
+  shareFlower.appendChild(icon);
+}
+
+function updateTendGardenButton(){
+  if (!btnTendGarden) return;
+  const hasFlower = Boolean(appliedFlowerKey && FLOWER_INFO[appliedFlowerKey]);
+  if (!puzzleFinished || !hasFlower){
+    btnTendGarden.hidden = true;
+    btnTendGarden.setAttribute('aria-hidden', 'true');
+    btnTendGarden.disabled = true;
+  } else {
+    btnTendGarden.hidden = false;
+    btnTendGarden.removeAttribute('aria-hidden');
+    btnTendGarden.disabled = false;
+  }
 }
 
 function dispatchCrosswordCompleted(){
@@ -301,9 +407,17 @@ function recordRevealUsage(){
 
 function handleFlowerOnCompletion(){
   const todayKey = classifyFlowerKey(totalHintsUsed, usedAnyReveal);
-  persistFlowerKey(todayKey);
-  refreshFlowerIcons(todayKey);
+  const nextIndex = getNextFlowerIndex(appliedFlowerIndex);
+  persistFlowerState(todayKey, nextIndex);
+  refreshFlowerIcons(todayKey, nextIndex);
   dispatchCrosswordCompleted();
+}
+
+function handleTendGardenClick(){
+  removeStoredValue(FLOWER_STORAGE_KEY);
+  removeStoredValue(FLOWER_DATE_KEY);
+  appliedFlowerKey = null;
+  refreshFlowerIcons(null, appliedFlowerIndex);
 }
 
 function key(r,c){ return `${r},${c}`; }
@@ -319,6 +433,7 @@ function buildGrid(){
   gridEl.innerHTML = '';
   grid = [];
   cellMap.clear();
+  flowerCells = [];
 
   for (let r=0;r<rows;r++){
     const rowArr = [];
@@ -345,6 +460,7 @@ function buildGrid(){
       gridEl.appendChild(cell.el);
       rowArr.push(cell);
       cellMap.set(k, cell);
+      if (cell.block) flowerCells.push(cell);
     }
     grid.push(rowArr);
   }
@@ -545,6 +661,7 @@ function onPuzzleComplete(){
   completionMessage = pickCelebrationMessage();
   applyCompletionMessage(completionMessage);
   populateResultsModal();
+  handleFlowerOnCompletion();
   renderSharePreview();
   if (btnViewResult){
     btnViewResult.focus();
@@ -578,6 +695,7 @@ function renderSharePreview(){
       shareGrid.appendChild(d);
     }
   }
+  updateShareFlower(appliedFlowerKey);
 }
 
 // Assemble plain-text emoji grid for clipboard sharing
@@ -687,6 +805,7 @@ function updateCompletionUi(completed){
       btnViewResult.hidden = false;
       btnViewResult.removeAttribute('aria-hidden');
     }
+    updateTendGardenButton();
   } else {
     if (hintDropdown) hintDropdown.hidden = false;
     if (btnGiveUp) btnGiveUp.hidden = false;
@@ -694,6 +813,11 @@ function updateCompletionUi(completed){
     if (btnViewResult){
       btnViewResult.hidden = true;
       btnViewResult.setAttribute('aria-hidden', 'true');
+    }
+    if (btnTendGarden){
+      btnTendGarden.hidden = true;
+      btnTendGarden.setAttribute('aria-hidden', 'true');
+      btnTendGarden.disabled = true;
     }
   }
 }
@@ -1386,6 +1510,11 @@ function setupHandlers(){
     btnViewResult.focus();
     mobileBehaviours.hideKeyboard();
     openShareModal();
+  });
+  if (btnTendGarden) btnTendGarden.addEventListener('click', () => {
+    if (!puzzleFinished) return;
+    handleTendGardenClick();
+    renderSharePreview();
   });
 
   // Close dropdowns when clicking outside
