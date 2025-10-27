@@ -1,6 +1,26 @@
 // Main game logic; starts directly in game view
 const DATA_FILE = 'Crosswords_new_format_27_10_2025.json';
 
+const FLOWER_STORAGE_KEY = 'cg.lastFlowerKey';
+const FLOWER_DATE_KEY = 'cg.lastCompletionISO';
+const FLOWER_FORCE_KEY = 'cg.debugForceFlower';
+const FLOWER_CELL_INDEX_KEY = 'cg.lastFlowerCellIndex'; // reused as the next placement index
+const FLOWER_SLOTS_KEY = 'cg.flowerSlots';
+const FLOWER_EMOJI = {
+  PURE: '🌹',
+  BRIGHT: '🌼',
+  GENTLE: '🌷',
+  GUIDED: '🌱'
+};
+
+const FLOWER_INFO = createFlowerInfo();
+
+let totalHintsUsed = 0;
+let usedAnyReveal = false;
+let appliedFlowerSlots = [];
+let nextFlowerIndex = 0;
+let flowerCells = [];
+
 // Elements
 const welcome = document.getElementById('welcome'); // may be null (welcome removed)
 const game = document.getElementById('game');
@@ -46,8 +66,10 @@ const resultsBody = document.getElementById('resultsBody');
 const resultsHeading = document.getElementById('shareHeading');
 const resultsTranslation = document.getElementById('shareSubheading');
 const btnViewResult = document.getElementById('btnViewResult');
+const btnTendGarden = document.getElementById('btnTendGarden');
 const btnCopyResult = document.getElementById('copyResult');
 const copyToast = document.getElementById('copyToast');
+const shareFlower = document.getElementById('shareFlower');
 
 const NO_COMMENT_TEXT = '(No setter\u2019s comment provided)';
 const CELEBRATION_MESSAGES = [
@@ -82,6 +104,8 @@ let hintPromptViewportHandler = null;
 let skipTooltipPointerDownId = null;
 let tooltipHighlightCells = [];
 let completionMessage = null;
+
+initializeFlowerState();
 
 const TIP = {
   acrostic: 'Take first letters.',
@@ -135,6 +159,382 @@ const HINT_COLOUR_VALUE = BASE_COLOUR_VALUES.green;
 // Temporary highlight colour for other cells in the active entry
 const ACTIVE_ENTRY_BG = '#3c3c3c';
 
+function createFlowerInfo(){
+  const buildSvg = (primary, secondary, center) => `
+    <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
+      <g fill="${primary}" opacity="0.9">
+        <circle cx="50" cy="18" r="18" />
+        <circle cx="50" cy="82" r="18" />
+        <circle cx="18" cy="50" r="18" />
+        <circle cx="82" cy="50" r="18" />
+      </g>
+      <g fill="${secondary}" opacity="0.85">
+        <circle cx="30" cy="30" r="16" />
+        <circle cx="70" cy="30" r="16" />
+        <circle cx="30" cy="70" r="16" />
+        <circle cx="70" cy="70" r="16" />
+      </g>
+      <circle cx="50" cy="50" r="18" fill="${center}" stroke="${secondary}" stroke-width="4" />
+      <circle cx="50" cy="50" r="8" fill="${secondary}" opacity="0.9" />
+    </svg>
+  `;
+
+  return {
+    PURE: {
+      name: 'Pure Bloom',
+      description: 'no hints used',
+      ariaLabel: 'Pure Bloom — no hints used',
+      svg: buildSvg('#A86FFF', '#932F6D', '#F4E7FF')
+    },
+    BRIGHT: {
+      name: 'Bright Bloom',
+      description: '1–2 hints used',
+      ariaLabel: 'Bright Bloom — used 1 to 2 hints',
+      svg: buildSvg('#FFD75A', '#FFB400', '#FFF4C2')
+    },
+    GENTLE: {
+      name: 'Gentle Bloom',
+      description: '3–4 hints used',
+      ariaLabel: 'Gentle Bloom — used 3 to 4 hints',
+      svg: buildSvg('#E18AC0', '#FFB3D9', '#FFE1EF')
+    },
+    GUIDED: {
+      name: 'Guided Bud',
+      description: 'used reveals or many hints',
+      ariaLabel: 'Guided Bud — used reveals or 5+ hints',
+      svg: buildSvg('#F2E9E4', '#FFB6A6', '#FFE8E1')
+    }
+  };
+}
+
+function getStorage(){
+  try {
+    return window.localStorage;
+  } catch (err) {
+    return null;
+  }
+}
+
+function getStoredValue(key){
+  const storage = getStorage();
+  if (!storage) return null;
+  try {
+    return storage.getItem(key);
+  } catch (err) {
+    return null;
+  }
+}
+
+function setStoredValue(key, value){
+  const storage = getStorage();
+  if (!storage) return;
+  try {
+    storage.setItem(key, value);
+  } catch (err) {
+    // Ignore storage errors (e.g. quota exceeded, private mode).
+  }
+}
+
+function removeStoredValue(key){
+  const storage = getStorage();
+  if (!storage) return;
+  try {
+    storage.removeItem(key);
+  } catch (err) {
+    // Ignore failures when storage isn't available.
+  }
+}
+
+function classifyFlowerKey(hintsUsed, revealUsed){
+  if (revealUsed) return 'GUIDED';
+  if (hintsUsed === 0) return 'PURE';
+  if (hintsUsed <= 2) return 'BRIGHT';
+  if (hintsUsed <= 4) return 'GENTLE';
+  return 'GUIDED';
+}
+
+function getStoredFlowerNextIndex(){
+  const value = getStoredValue(FLOWER_CELL_INDEX_KEY);
+  if (value == null) return null;
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
+function parseStoredFlowerSlots(raw){
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map(key => (FLOWER_INFO[key] ? key : null));
+  } catch (err) {
+    return [];
+  }
+}
+
+function getStoredFlowerSlots(){
+  const stored = parseStoredFlowerSlots(getStoredValue(FLOWER_SLOTS_KEY));
+  if (stored.length) return stored;
+
+  const legacyKey = getStoredValue(FLOWER_STORAGE_KEY);
+  if (!legacyKey || !FLOWER_INFO[legacyKey]) return [];
+
+  const legacyIndex = getStoredFlowerNextIndex();
+  const assumedTotal = 4;
+  const index = legacyIndex != null
+    ? (((legacyIndex - 1) % assumedTotal) + assumedTotal) % assumedTotal
+    : 0;
+  const arr = Array(assumedTotal).fill(null);
+  arr[index] = legacyKey;
+  return arr;
+}
+
+function findNextOpenSlot(slots, startIndex){
+  const total = slots.length;
+  if (!total) return 0;
+  const start = Number.isFinite(startIndex) ? startIndex : 0;
+  for (let step = 0; step < total; step++){
+    const idx = (start + step) % total;
+    if (!slots[idx] || !FLOWER_INFO[slots[idx]]) return idx;
+  }
+  return start % total;
+}
+
+function alignFlowerStateWithGrid(){
+  const total = flowerCells.length;
+  if (!total){
+    return;
+  }
+
+  if (appliedFlowerSlots.length > total){
+    appliedFlowerSlots = appliedFlowerSlots.slice(0, total);
+  } else {
+    while (appliedFlowerSlots.length < total) appliedFlowerSlots.push(null);
+  }
+
+  if (!Number.isFinite(nextFlowerIndex) || nextFlowerIndex < 0) nextFlowerIndex = 0;
+  nextFlowerIndex = findNextOpenSlot(appliedFlowerSlots, nextFlowerIndex % total);
+}
+
+function getRenderFlowerSlots(baseSlots){
+  const total = flowerCells.length || (Array.isArray(baseSlots) ? baseSlots.length : 0);
+  let slots = Array.isArray(baseSlots) ? baseSlots.slice(0, total || undefined) : [];
+  if (total && slots.length < total){
+    while (slots.length < total) slots.push(null);
+  }
+  const forced = getStoredValue(FLOWER_FORCE_KEY);
+  if (forced && FLOWER_INFO[forced]){
+    const length = total || slots.length || 4;
+    return Array.from({ length }, () => forced);
+  }
+  return slots;
+}
+
+function applyFlowersToGrid(slotsOverride){
+  const slots = getRenderFlowerSlots(slotsOverride ?? appliedFlowerSlots);
+
+  flowerCells.forEach(cell => {
+    const existing = cell.el.querySelector('.flower-icon');
+    if (existing) existing.remove();
+    cell.el.classList.remove('flowered');
+  });
+
+  slots.forEach((key, idx) => {
+    if (!FLOWER_INFO[key]) return;
+    const cell = flowerCells[idx];
+    if (!cell || !cell.el) return;
+    const info = FLOWER_INFO[key];
+    const icon = document.createElement('div');
+    icon.className = 'flower-icon';
+    icon.dataset.flowerKey = key;
+    icon.setAttribute('role', 'img');
+    icon.setAttribute('aria-label', info.ariaLabel);
+    icon.innerHTML = info.svg;
+    cell.el.appendChild(icon);
+    cell.el.classList.add('flowered');
+  });
+
+  updateTendGardenButton();
+}
+
+function refreshFlowerIcons(){
+  alignFlowerStateWithGrid();
+  applyFlowersToGrid(appliedFlowerSlots);
+  updateShareFlower(appliedFlowerSlots);
+}
+
+function describeFlowerSlots(slots){
+  const parts = [];
+  slots.forEach((key, idx) => {
+    if (!FLOWER_INFO[key]) return;
+    const info = FLOWER_INFO[key];
+    const position = ['top left', 'top right', 'bottom left', 'bottom right'][idx] || `slot ${idx + 1}`;
+    parts.push(`${info.name} in the ${position}`);
+  });
+  return parts.join(', ');
+}
+
+function updateShareFlower(slots){
+  if (!shareFlower) return;
+  const renderSlots = getRenderFlowerSlots(Array.isArray(slots) ? slots : appliedFlowerSlots);
+  shareFlower.innerHTML = '';
+  shareFlower.classList.remove('has-flower');
+  shareFlower.removeAttribute('role');
+  shareFlower.removeAttribute('aria-label');
+  shareFlower.setAttribute('aria-hidden', 'true');
+
+  const hasAny = renderSlots.some(key => FLOWER_INFO[key]);
+  if (!hasAny) return;
+
+  shareFlower.classList.add('has-flower');
+  shareFlower.setAttribute('role', 'img');
+  shareFlower.setAttribute('aria-label', describeFlowerSlots(renderSlots) || 'Crossword flowers');
+  shareFlower.removeAttribute('aria-hidden');
+
+  renderSlots.forEach((key, idx) => {
+    const cell = document.createElement('div');
+    cell.className = 'share-flower-cell';
+    cell.dataset.index = String(idx);
+    if (FLOWER_INFO[key]){
+      const icon = document.createElement('div');
+      icon.className = 'flower-icon';
+      icon.dataset.flowerKey = key;
+      icon.innerHTML = FLOWER_INFO[key].svg;
+      cell.appendChild(icon);
+    }
+    shareFlower.appendChild(cell);
+  });
+}
+
+function normalizeFlowerSlotsForStorage(slots, total){
+  const length = Number.isFinite(total) && total > 0 ? total : slots.length;
+  const normalized = [];
+  for (let i = 0; i < length; i++){
+    const key = slots[i];
+    normalized[i] = FLOWER_INFO[key] ? key : null;
+  }
+  return normalized;
+}
+
+function findLatestStoredFlower(slots){
+  for (let i = slots.length - 1; i >= 0; i--){
+    const key = slots[i];
+    if (FLOWER_INFO[key]) return key;
+  }
+  return null;
+}
+
+function persistFlowerCompletion(latestKey){
+  if (!FLOWER_INFO[latestKey]) return;
+  const forced = getStoredValue(FLOWER_FORCE_KEY);
+  if (forced && FLOWER_INFO[forced]) return;
+  const normalized = normalizeFlowerSlotsForStorage(appliedFlowerSlots, flowerCells.length || appliedFlowerSlots.length);
+  setStoredValue(FLOWER_SLOTS_KEY, JSON.stringify(normalized));
+  setStoredValue(FLOWER_CELL_INDEX_KEY, String(nextFlowerIndex));
+  setStoredValue(FLOWER_STORAGE_KEY, latestKey);
+  setStoredValue(FLOWER_DATE_KEY, new Date().toISOString());
+}
+
+function persistFlowerGardenState({ updateDate = false } = {}){
+  const forced = getStoredValue(FLOWER_FORCE_KEY);
+  if (forced && FLOWER_INFO[forced]) return;
+  const normalized = normalizeFlowerSlotsForStorage(appliedFlowerSlots, flowerCells.length || appliedFlowerSlots.length);
+  setStoredValue(FLOWER_SLOTS_KEY, JSON.stringify(normalized));
+  setStoredValue(FLOWER_CELL_INDEX_KEY, String(nextFlowerIndex));
+  const latest = findLatestStoredFlower(normalized);
+  if (latest){
+    setStoredValue(FLOWER_STORAGE_KEY, latest);
+    if (updateDate) setStoredValue(FLOWER_DATE_KEY, new Date().toISOString());
+  } else {
+    removeStoredValue(FLOWER_STORAGE_KEY);
+    removeStoredValue(FLOWER_DATE_KEY);
+  }
+}
+
+function initializeFlowerState(){
+  appliedFlowerSlots = getStoredFlowerSlots();
+  const storedNext = getStoredFlowerNextIndex();
+  if (storedNext != null){
+    nextFlowerIndex = storedNext;
+  } else if (appliedFlowerSlots.length){
+    nextFlowerIndex = findNextOpenSlot(appliedFlowerSlots, 0);
+  } else {
+    nextFlowerIndex = 0;
+  }
+}
+
+function updateTendGardenButton(){
+  if (!btnTendGarden) return;
+  const hasFlower = appliedFlowerSlots.some(key => FLOWER_INFO[key]);
+  if (!puzzleFinished || !hasFlower){
+    btnTendGarden.hidden = true;
+    btnTendGarden.setAttribute('aria-hidden', 'true');
+    btnTendGarden.disabled = true;
+  } else {
+    btnTendGarden.hidden = false;
+    btnTendGarden.removeAttribute('aria-hidden');
+    btnTendGarden.disabled = false;
+  }
+}
+
+function dispatchCrosswordCompleted(){
+  if (typeof window === 'undefined') return;
+  const handler = window.onCrosswordCompleted;
+  if (typeof handler !== 'function') return;
+  try {
+    handler({ totalHintsUsed, usedAnyReveal });
+  } catch (err) {
+    console.error('Error running onCrosswordCompleted handler:', err);
+  }
+}
+
+function recordHintUsage(type){
+  totalHintsUsed += 1;
+  if (type && String(type).toLowerCase().startsWith('reveal')) usedAnyReveal = true;
+}
+
+function recordRevealUsage(){
+  usedAnyReveal = true;
+  totalHintsUsed += 1;
+}
+
+function handleFlowerOnCompletion(){
+  const todayKey = classifyFlowerKey(totalHintsUsed, usedAnyReveal);
+  alignFlowerStateWithGrid();
+
+  const totalSlots = flowerCells.length || appliedFlowerSlots.length || 4;
+  if (!appliedFlowerSlots.length){
+    appliedFlowerSlots = Array(totalSlots).fill(null);
+  }
+
+  const placementIndex = findNextOpenSlot(appliedFlowerSlots, nextFlowerIndex);
+  appliedFlowerSlots[placementIndex] = todayKey;
+
+  const nextSearchStart = (placementIndex + 1) % appliedFlowerSlots.length;
+  nextFlowerIndex = findNextOpenSlot(appliedFlowerSlots, nextSearchStart);
+
+  persistFlowerCompletion(todayKey);
+  refreshFlowerIcons();
+  dispatchCrosswordCompleted();
+}
+
+function handleTendGardenClick(){
+  alignFlowerStateWithGrid();
+  if (!appliedFlowerSlots.length) return;
+  const total = appliedFlowerSlots.length;
+  let target = ((Number.isFinite(nextFlowerIndex) ? nextFlowerIndex : 0) + total - 1) % total;
+  let found = -1;
+  for (let offset = 0; offset < total; offset++){
+    const idx = (target - offset + total) % total;
+    if (FLOWER_INFO[appliedFlowerSlots[idx]]){ found = idx; break; }
+  }
+  if (found === -1) return;
+
+  appliedFlowerSlots[found] = null;
+  nextFlowerIndex = found;
+  persistFlowerGardenState();
+  refreshFlowerIcons();
+}
+
 function key(r,c){ return `${r},${c}`; }
 
 function isMobileTouchActive(){
@@ -148,6 +548,7 @@ function buildGrid(){
   gridEl.innerHTML = '';
   grid = [];
   cellMap.clear();
+  flowerCells = [];
 
   for (let r=0;r<rows;r++){
     const rowArr = [];
@@ -174,6 +575,10 @@ function buildGrid(){
       gridEl.appendChild(cell.el);
       rowArr.push(cell);
       cellMap.set(k, cell);
+      if (cell.block){
+        cell.flowerIndex = flowerCells.length;
+        flowerCells.push(cell);
+      }
     }
     grid.push(rowArr);
   }
@@ -290,6 +695,8 @@ function onHintUsed(clueId, type){
 
   if (!ent || ent.status === 'solved') return;
 
+  recordHintUsage(type);
+
   if (!ent) return;
 
   if (!hintPromptShown && type === 'analyse'){
@@ -372,6 +779,7 @@ function onPuzzleComplete(){
   completionMessage = pickCelebrationMessage();
   applyCompletionMessage(completionMessage);
   populateResultsModal();
+  handleFlowerOnCompletion();
   renderSharePreview();
   if (btnViewResult){
     btnViewResult.focus();
@@ -387,6 +795,7 @@ function renderSharePreview(){
   const { rows, cols } = puzzle.grid;
   shareGrid.innerHTML = '';
   if (!rows || !cols) return;
+  const slots = getRenderFlowerSlots(appliedFlowerSlots);
   shareGrid.style.gridTemplateColumns = `repeat(${cols},16px)`;
   shareGrid.style.gridTemplateRows = `repeat(${rows},16px)`;
   for (let r = 0; r < rows; r++){
@@ -399,11 +808,22 @@ function renderSharePreview(){
         if (cell.isGrey) bg = HINT_COLOUR_VALUE;
         else if (cell.baseColour !== 'none') bg = BASE_COLOUR_VALUES[cell.baseColour];
         else bg = '#fff';
+      } else {
+        d.classList.add('share-cell-block');
+        const idx = typeof cell.flowerIndex === 'number' ? cell.flowerIndex : -1;
+        if (idx >= 0 && FLOWER_INFO[slots[idx]]){
+          const icon = document.createElement('div');
+          icon.className = 'flower-icon';
+          icon.dataset.flowerKey = slots[idx];
+          icon.innerHTML = FLOWER_INFO[slots[idx]].svg;
+          d.appendChild(icon);
+        }
       }
       d.style.background = bg;
       shareGrid.appendChild(d);
     }
   }
+  updateShareFlower(appliedFlowerSlots);
 }
 
 // Assemble plain-text emoji grid for clipboard sharing
@@ -411,6 +831,7 @@ function buildShareText(){
   if (!puzzle || !puzzle.grid) return '';
   const { rows, cols } = puzzle.grid;
   const lines = [];
+  const slots = getRenderFlowerSlots(appliedFlowerSlots);
   for (let r = 0; r < rows; r++){
     let line = '';
     for (let c = 0; c < cols; c++){
@@ -422,6 +843,12 @@ function buildShareText(){
         else if (cell.baseColour === 'yellow') emoji = '🟨';
         else if (cell.baseColour === 'purple') emoji = '🟪';
         else emoji = '⬜';
+      } else {
+        const idx = typeof cell.flowerIndex === 'number' ? cell.flowerIndex : -1;
+        const key = idx >= 0 ? slots[idx] : null;
+        if (FLOWER_INFO[key] && FLOWER_EMOJI[key]){
+          emoji = FLOWER_EMOJI[key];
+        }
       }
       line += emoji;
     }
@@ -513,6 +940,7 @@ function updateCompletionUi(completed){
       btnViewResult.hidden = false;
       btnViewResult.removeAttribute('aria-hidden');
     }
+    updateTendGardenButton();
   } else {
     if (hintDropdown) hintDropdown.hidden = false;
     if (btnGiveUp) btnGiveUp.hidden = false;
@@ -520,6 +948,11 @@ function updateCompletionUi(completed){
     if (btnViewResult){
       btnViewResult.hidden = true;
       btnViewResult.setAttribute('aria-hidden', 'true');
+    }
+    if (btnTendGarden){
+      btnTendGarden.hidden = true;
+      btnTendGarden.setAttribute('aria-hidden', 'true');
+      btnTendGarden.disabled = true;
     }
   }
 }
@@ -879,7 +1312,7 @@ function renderClue(ent){
 function renderLetters(){
   grid.flat().forEach(cell => {
     [...cell.el.childNodes].forEach(n => {
-      if (n.nodeType === 1 && n.classList.contains('num')) return;
+      if (n.nodeType === 1 && (n.classList.contains('num') || n.classList.contains('flower-icon'))) return;
       cell.el.removeChild(n);
     });
     cell.el.classList.remove('active');
@@ -1179,6 +1612,7 @@ function setupHandlers(){
   // Reveal answer: fill the current entry with the correct letters and mark it as solved
   if (btnGiveUp) btnGiveUp.addEventListener('click', () => {
     if (!currentEntry) return;
+    recordRevealUsage();
     currentEntry.cells.forEach((cell, idx) => {
       cell.letter = currentEntry.answer[idx];
       // Highlight entire answer when revealed
@@ -1211,6 +1645,11 @@ function setupHandlers(){
     btnViewResult.focus();
     mobileBehaviours.hideKeyboard();
     openShareModal();
+  });
+  if (btnTendGarden) btnTendGarden.addEventListener('click', () => {
+    if (!puzzleFinished) return;
+    handleTendGardenClick();
+    renderSharePreview();
   });
 
   // Close dropdowns when clicking outside
@@ -1283,6 +1722,8 @@ function restartGame(){
     }
   });
   puzzleFinished = false;
+  totalHintsUsed = 0;
+  usedAnyReveal = false;
   updateCompletionUi(false);
   if (shareModal) shareModal.hidden = true;
   if (copyToast) copyToast.hidden = true;
@@ -1299,6 +1740,7 @@ function restartGame(){
 
   focusFirstCell();
   renderLetters();
+  refreshFlowerIcons();
 }
 
 function escapeHtml(s=''){
@@ -1769,6 +2211,8 @@ function applyPuzzle(data){
   lastClickedCellKey = null;
   dirToggle.clear();
   puzzleFinished = false;
+  totalHintsUsed = 0;
+  usedAnyReveal = false;
   updateCompletionUi(false);
   if (shareModal) shareModal.hidden = true;
   if (copyToast) copyToast.hidden = true;
@@ -1790,6 +2234,7 @@ function applyPuzzle(data){
   placeEntries();
   focusFirstCell();
   if (mobileInput && !mobileBehaviours.isActive()) mobileInput.focus();
+  refreshFlowerIcons();
 }
 
 function useFallbackPuzzle(){
