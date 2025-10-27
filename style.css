@@ -381,6 +381,15 @@ body.mobile-touch.mobile-keyboard-open{
   flex:1;
 }
 
+.share-preview{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:1rem;
+  margin:0 auto 0.75rem;
+  flex-wrap:wrap;
+}
+
 .share-grid{
   display:grid;
   grid-template-columns:repeat(5,1fr);
@@ -388,14 +397,25 @@ body.mobile-touch.mobile-keyboard-open{
   gap:2px;
   width:min(80vw,250px);
   aspect-ratio:1;
-  align-self:center;
-  margin:0 auto 0.5rem;
   place-content:center;
 }
 
 .share-cell{
   width:100%;
   aspect-ratio:1;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  position:relative;
+}
+
+.share-cell-block{
+  background:#000;
+}
+
+.share-cell .flower-icon{
+  width:90%;
+  height:90%;
 }
 
 .share-actions{
