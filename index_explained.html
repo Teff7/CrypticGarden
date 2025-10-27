@@ -1,0 +1,132 @@
+<!DOCTYPE html> <!-- Declares the document as HTML5 so browsers know how to interpret it. -->
+<html lang="en"> <!-- Starts the root element and notes the language is English for accessibility. -->
+<head> <!-- Opens the document head where metadata and links live. -->
+  <meta charset="UTF-8" /> <!-- Specifies that the page uses UTF-8 character encoding. -->
+  <meta name="viewport" content="width=device-width, initial-scale=1" /> <!-- Ensures the layout scales nicely on mobile screens. -->
+  <title>Daily 5×5 Cryptic</title> <!-- Sets the browser tab title users will see. -->
+  <link rel="stylesheet" href="style.css" /> <!-- Loads the shared stylesheet to style the page. -->
+</head> <!-- Ends the head section. -->
+<body> <!-- Begins the visible page content. -->
+  <!-- Hidden input to capture mobile keystrokes --> <!-- Explains that the next element is an off-screen keyboard catcher for phones. -->
+  <input id="mobileInput" inputmode="text" maxlength="1" autocomplete="off" autocapitalize="characters" <!-- Creates a hidden input for capturing single-character input on mobile devices. -->
+         style="opacity:0; position:absolute; left:-10000px;" /> <!-- Moves the input off screen and makes it invisible. -->
+
+  <!-- Game (loads immediately; no welcome screen) --> <!-- Notes that the main game interface shows right away. -->
+  <section id="game" class="game-screen"> <!-- Wraps the entire game interface in a section for layout. -->
+    <!-- TOP: centered date (menu removed) --> <!-- Describes the upcoming layout block for the top bar. -->
+    <div class="top-bar"> <!-- Container for the top bar content. -->
+      <div class="top-center"> <!-- Centers the selector and date within the top bar. -->
+        <label for="puzzleSelect" class="visually-hidden">Choose a crossword</label> <!-- Provides an accessible label for the selector while keeping it visually hidden. -->
+        <select id="puzzleSelect" class="puzzle-select" disabled> <!-- Dropdown for picking puzzles, disabled until data loads. -->
+          <option>Loading…</option> <!-- Shows a placeholder option while puzzles load. -->
+        </select> <!-- Closes the puzzle dropdown. -->
+        <div id="puzzleDate" class="date">Loading crosswords…</div> <!-- Displays the currently selected puzzle date once available. -->
+      </div> <!-- Ends the top-center wrapper. -->
+    </div> <!-- Ends the top bar. -->
+
+    <!-- Grid --> <!-- Marks the upcoming crossword grid area. -->
+    <div id="grid" class="grid" role="application" aria-label="5 by 5 crossword grid"></div> <!-- Placeholder element where the crossword grid will be rendered. -->
+
+    <!-- Clues + controls --> <!-- Indicates the area containing clues and gameplay controls. -->
+    <div id="clueSection" class="clue-section"> <!-- Wrapper for the clue panel and bottom buttons. -->
+      <div id="cluePanel" class="clue-panel"> <!-- Holds the currently active clue and related info. -->
+        <div id="clueHeader" class="clue-header">—</div> <!-- Displays the clue identifier (e.g., 1 Across). -->
+        <div id="clueText" class="clue"></div> <!-- Shows the clue text with interactive highlights. -->
+      </div> <!-- Ends the clue panel. -->
+
+      <!-- BOTTOM: centered gameplay buttons --> <!-- Notes that the next elements are the bottom action buttons. -->
+      <div class="bottom-actions"> <!-- Container for the hints and action buttons. -->
+        <div class="dropdown" id="hintDropdown"> <!-- Wraps the hints dropdown button and menu. -->
+          <button class="help-button small" id="btnHints" aria-haspopup="true" aria-expanded="false">Hints ▾</button> <!-- Button that opens the hints menu. -->
+          <div class="menu" id="hintMenu" role="menu" aria-hidden="true"> <!-- Hidden menu listing available hints. -->
+            <button class="menu-item" id="hintDef" role="menuitem">Definition</button> <!-- Option to highlight the definition part of the clue. -->
+            <button class="menu-item" id="hintLetter" role="menuitem">Reveal a letter</button> <!-- Option to fill one letter of the answer. -->
+            <button class="menu-item" id="hintWordplay" role="menuitem">Reveal the trick</button> <!-- Option to highlight the wordplay explanation. -->
+          </div> <!-- Ends the hints menu. -->
+        </div> <!-- Ends the dropdown wrapper. -->
+
+        <button class="help-button small" id="btnGiveUp" title="Reveal this entry">Reveal answer</button> <!-- Button that fills in the current answer. -->
+        <button class="help-button small" id="btnHelpBottom">Help</button> <!-- Button that opens the help modal from the game screen. -->
+        <button class="help-button small" id="btnViewResult" hidden aria-hidden="true">View result</button> <!-- Button to review results after finishing, initially hidden. -->
+      </div> <!-- Ends the bottom action area. -->
+    </div> <!-- Ends the clue section wrapper. -->
+
+    <div id="mobileKeyboard" class="mobile-keyboard" hidden aria-hidden="true"></div> <!-- Placeholder for the on-screen mobile keyboard. -->
+  </section> <!-- Ends the game section. -->
+
+  <!-- Help modal --> <!-- Introduces the modal that teaches cryptic crossword basics. -->
+  <div id="helpModal" class="modal" hidden> <!-- Container for the help dialog, hidden until opened. -->
+    <div class="modal-card"> <!-- Inner card that holds the help content. -->
+      <button class="modal-close" id="helpClose" aria-label="Close">×</button> <!-- Button to close the help modal. -->
+      <div class="help-body"> <!-- Wrapper for the instructional text. -->
+How cryptic crosswords work<!-- Heading text describing the content. -->
+Each clue has two parts:<!-- Intro sentence for the explanation. -->
+
+Definition — plain meaning of the answer.<!-- Explains what the definition portion does. -->
+Wordplay — instructions to build the answer (e.g., anagram, container, hidden).<!-- Explains what wordplay means in clues. -->
+Use the Hints menu if you’re learning:<!-- Encourages new solvers to use hints. -->
+
+Definition highlights the definition part.<!-- Describes the definition hint. -->
+Reveal a letter fills a random empty cell in the entry.<!-- Describes the reveal-letter hint. -->
+Reveal the tricks, click or hover over the different parts to get a hint.<!-- Explains the interactive wordplay hints. -->
+Click a numbered square to switch between Across and Down on that start square. Type moves the cursor; Backspace moves back. When an entry is correct, it locks in. “Reveal answer” will fill it.<!-- Gives instructions on how to control the grid. -->
+
+Common clue devices<!-- Introduces a list of clue mechanisms. -->
+Anagram<!-- Names the anagram clue type. -->
+Letters are mixed to form the answer. Look for signals like broken, drunk, mixed, wild.<!-- Explains how anagrams work and signals to spot. -->
+Example: Inebriated pirates travel about (7) → TRAIPSE (anagram of PIRATES).<!-- Provides an example of an anagram clue. -->
+Reversal<!-- Names the reversal clue type. -->
+Read letters backwards. Common signals: returned, rising, back, up.<!-- Describes reversal clues and their indicators. -->
+Example: Spies bring silverware back (6) → SNOOPS (SPOONS reversed).<!-- Gives an example of a reversal clue. -->
+Container (Insertion)<!-- Names the container clue type. -->
+One word goes inside another. Indicators include in, around, holding. Sometimes the clue also tells you to reverse the container or contents first.<!-- Explains container clues and hints. -->
+Example: Uncovered calf in grass (8) → REVEALED (VEAL inside REED).<!-- Provides an example of a container clue. -->
+Hidden Word<!-- Names the hidden word clue type. -->
+Answer is hidden inside the clue. Indicators: in part, within, concealed. Sometimes paired with a reversal signal.<!-- Explains hidden word clues and their signals. -->
+Example: A long time in a dungeon (3) → EON (hidden in “dungEON”).<!-- Gives an example of a hidden word clue. -->
+Charade<!-- Names the charade clue type. -->
+Parts are placed side by side to make the answer.<!-- Describes charade clues. -->
+Example: Outlaw leader managing money (7) → BANKING (BAN + KING).<!-- Provides a charade example. -->
+Acrostic (Initials/Finals)<!-- Names the acrostic clue type. -->
+Take first or last letters. Indicators: initially, at first, finally.<!-- Explains acrostic clues. -->
+Example: At first, Actor Needing New Identity Emulates Orphan (5) → ANNIE (initial letters).<!-- Gives an acrostic example. -->
+Double Definition<!-- Names the double definition clue type. -->
+Two distinct meanings point to one word.<!-- Describes double definition clues. -->
+Example: Cover for the head / gangster (4) → HOOD.<!-- Provides a double definition example. -->
+Homophone<!-- Names the homophone clue type. -->
+Sounds like another word. Indicators: heard, we’re told, reportedly.<!-- Explains homophone clues. -->
+Example: The king has no successor, we hear (4) → BALD (sounds like “no heir”).<!-- Gives a homophone example. -->
+Deletion<!-- Names the deletion clue type. -->
+Letters are removed. Indicators: endless, heartless, beheaded, topless.<!-- Explains deletion clues. -->
+Example: Bird is cowardly, about to fly away (5) → RAVEN (CRAVEN minus C).<!-- Gives a deletion example. -->
+&lit (All-in-One / Literally)<!-- Names the &lit clue type. -->
+Whole clue serves as both definition and wordplay.<!-- Explains &lit clues. -->
+Example: Leaders of Iranian mosques and Muslim sects! (5) → IMAMS (first letters; the full clue defines it too).<!-- Provides an &lit example. -->
+      </div> <!-- Ends the help body content. -->
+    </div> <!-- Ends the help card. -->
+  </div> <!-- Ends the help modal. -->
+
+  <!-- Completion/share modal --> <!-- Introduces the modal that appears when the puzzle is finished. -->
+  <div id="shareModal" class="modal" hidden> <!-- Wrapper for the completion results dialog. -->
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="shareHeading"> <!-- Defines the dialog role and accessible name. -->
+      <button class="modal-close" id="shareClose" aria-label="Close">×</button> <!-- Button to dismiss the results modal. -->
+      <h2 id="shareHeading">Crossword results</h2> <!-- Heading describing the modal contents. -->
+      <p id="shareSubheading" class="results-translation" hidden></p> <!-- Optional translation line, hidden until populated. -->
+      <div id="shareGrid" class="share-grid" aria-label="Result grid"></div> <!-- Placeholder for the results emoji grid preview. -->
+      <div class="share-actions"> <!-- Container for share-related buttons. -->
+        <button class="help-button small" id="copyResult">Copy result</button> <!-- Button that copies the share text to the clipboard. -->
+        <a class="help-button small" href="https://cryptic-garden.vercel.app/" target="_blank" rel="noopener">cryptic-garden.vercel.app</a> <!-- Link to the live site, opening in a new tab safely. -->
+      </div> <!-- Ends the share actions. -->
+      <p class="results-lede">Here’s how each clue resolved:</p> <!-- Intro sentence for the list of clue outcomes. -->
+      <div id="resultsBody" class="results-body" role="list" aria-live="polite"></div> <!-- Container where clue result entries will be inserted. -->
+    </div> <!-- Ends the modal card. -->
+  </div> <!-- Ends the share modal. -->
+
+  <div id="copyToast" class="toast" hidden>Copied</div> <!-- Hidden toast notification used after copying results. -->
+
+  <div id="fireworks" class="fireworks" aria-hidden="true"></div> <!-- Overlay used for celebration particle effects. -->
+
+  <!-- Bust browser cache by adding a version query string --> <!-- Reminder that script imports can be versioned to break cache. -->
+  <script src="script.js"></script> <!-- Loads the game logic JavaScript file. -->
+</body> <!-- Ends the body content. -->
+</html> <!-- Closes the HTML document. -->
