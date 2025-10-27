@@ -1,6 +1,16 @@
 // Main game logic; starts directly in game view
 const DATA_FILE = 'Crosswords_new_format_27_10_2025.json';
 
+const FLOWER_STORAGE_KEY = 'cg.lastFlowerKey';
+const FLOWER_DATE_KEY = 'cg.lastCompletionISO';
+const FLOWER_FORCE_KEY = 'cg.debugForceFlower';
+
+const FLOWER_INFO = createFlowerInfo();
+
+let totalHintsUsed = 0;
+let usedAnyReveal = false;
+let appliedFlowerKey = null;
+
 // Elements
 const welcome = document.getElementById('welcome'); // may be null (welcome removed)
 const game = document.getElementById('game');
@@ -134,6 +144,167 @@ const BASE_COLOUR_VALUES = {
 const HINT_COLOUR_VALUE = BASE_COLOUR_VALUES.green;
 // Temporary highlight colour for other cells in the active entry
 const ACTIVE_ENTRY_BG = '#3c3c3c';
+
+function createFlowerInfo(){
+  const buildSvg = (primary, secondary, center) => `
+    <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
+      <g fill="${primary}" opacity="0.9">
+        <circle cx="50" cy="18" r="18" />
+        <circle cx="50" cy="82" r="18" />
+        <circle cx="18" cy="50" r="18" />
+        <circle cx="82" cy="50" r="18" />
+      </g>
+      <g fill="${secondary}" opacity="0.85">
+        <circle cx="30" cy="30" r="16" />
+        <circle cx="70" cy="30" r="16" />
+        <circle cx="30" cy="70" r="16" />
+        <circle cx="70" cy="70" r="16" />
+      </g>
+      <circle cx="50" cy="50" r="18" fill="${center}" stroke="${secondary}" stroke-width="4" />
+      <circle cx="50" cy="50" r="8" fill="${secondary}" opacity="0.9" />
+    </svg>
+  `;
+
+  return {
+    PURE: {
+      name: 'Pure Bloom',
+      description: 'no hints used',
+      ariaLabel: 'Pure Bloom — no hints used',
+      svg: buildSvg('#A86FFF', '#932F6D', '#F4E7FF')
+    },
+    BRIGHT: {
+      name: 'Bright Bloom',
+      description: '1–2 hints used',
+      ariaLabel: 'Bright Bloom — used 1 to 2 hints',
+      svg: buildSvg('#FFD75A', '#FFB400', '#FFF4C2')
+    },
+    GENTLE: {
+      name: 'Gentle Bloom',
+      description: '3–4 hints used',
+      ariaLabel: 'Gentle Bloom — used 3 to 4 hints',
+      svg: buildSvg('#E18AC0', '#FFB3D9', '#FFE1EF')
+    },
+    GUIDED: {
+      name: 'Guided Bud',
+      description: 'used reveals or many hints',
+      ariaLabel: 'Guided Bud — used reveals or 5+ hints',
+      svg: buildSvg('#F2E9E4', '#FFB6A6', '#FFE8E1')
+    }
+  };
+}
+
+function getStorage(){
+  try {
+    return window.localStorage;
+  } catch (err) {
+    return null;
+  }
+}
+
+function getStoredValue(key){
+  const storage = getStorage();
+  if (!storage) return null;
+  try {
+    return storage.getItem(key);
+  } catch (err) {
+    return null;
+  }
+}
+
+function setStoredValue(key, value){
+  const storage = getStorage();
+  if (!storage) return;
+  try {
+    storage.setItem(key, value);
+  } catch (err) {
+    // Ignore storage errors (e.g. quota exceeded, private mode).
+  }
+}
+
+function classifyFlowerKey(hintsUsed, revealUsed){
+  if (revealUsed) return 'GUIDED';
+  if (hintsUsed === 0) return 'PURE';
+  if (hintsUsed <= 2) return 'BRIGHT';
+  if (hintsUsed <= 4) return 'GENTLE';
+  return 'GUIDED';
+}
+
+function persistFlowerKey(key){
+  if (!FLOWER_INFO[key]) return;
+  const storage = getStorage();
+  if (!storage) return;
+  const forced = getStoredValue(FLOWER_FORCE_KEY);
+  if (forced && FLOWER_INFO[forced]) return;
+  setStoredValue(FLOWER_STORAGE_KEY, key);
+  const iso = new Date().toISOString();
+  setStoredValue(FLOWER_DATE_KEY, iso);
+}
+
+function getRenderFlowerKey(preferredKey){
+  const forced = getStoredValue(FLOWER_FORCE_KEY);
+  if (forced && FLOWER_INFO[forced]) return forced;
+  if (preferredKey && FLOWER_INFO[preferredKey]) return preferredKey;
+  const stored = getStoredValue(FLOWER_STORAGE_KEY);
+  if (stored && FLOWER_INFO[stored]) return stored;
+  return null;
+}
+
+function applyFlowerToGrid(key){
+  if (!grid || !grid.length) {
+    appliedFlowerKey = key || null;
+    return;
+  }
+  grid.flat().forEach(cell => {
+    if (!cell.block) return;
+    const existing = cell.el.querySelector('.flower-icon');
+    if (existing) existing.remove();
+    cell.el.classList.remove('flowered');
+    if (!key || !FLOWER_INFO[key]) return;
+    const info = FLOWER_INFO[key];
+    const icon = document.createElement('div');
+    icon.className = 'flower-icon';
+    icon.dataset.flowerKey = key;
+    icon.setAttribute('role', 'img');
+    icon.setAttribute('aria-label', info.ariaLabel);
+    icon.innerHTML = info.svg;
+    cell.el.appendChild(icon);
+    cell.el.classList.add('flowered');
+  });
+  appliedFlowerKey = key || null;
+}
+
+function refreshFlowerIcons(preferredKey){
+  const key = getRenderFlowerKey(preferredKey || appliedFlowerKey || null);
+  applyFlowerToGrid(key);
+}
+
+function dispatchCrosswordCompleted(){
+  if (typeof window === 'undefined') return;
+  const handler = window.onCrosswordCompleted;
+  if (typeof handler !== 'function') return;
+  try {
+    handler({ totalHintsUsed, usedAnyReveal });
+  } catch (err) {
+    console.error('Error running onCrosswordCompleted handler:', err);
+  }
+}
+
+function recordHintUsage(type){
+  totalHintsUsed += 1;
+  if (type && String(type).toLowerCase().startsWith('reveal')) usedAnyReveal = true;
+}
+
+function recordRevealUsage(){
+  usedAnyReveal = true;
+  totalHintsUsed += 1;
+}
+
+function handleFlowerOnCompletion(){
+  const todayKey = classifyFlowerKey(totalHintsUsed, usedAnyReveal);
+  persistFlowerKey(todayKey);
+  refreshFlowerIcons(todayKey);
+  dispatchCrosswordCompleted();
+}
 
 function key(r,c){ return `${r},${c}`; }
 
@@ -290,6 +461,8 @@ function onHintUsed(clueId, type){
 
   if (!ent || ent.status === 'solved') return;
 
+  recordHintUsage(type);
+
   if (!ent) return;
 
   if (!hintPromptShown && type === 'analyse'){
@@ -377,6 +550,7 @@ function onPuzzleComplete(){
     btnViewResult.focus();
   }
   mobileBehaviours.hideKeyboard();
+  handleFlowerOnCompletion();
   openShareModal();
   finishGame();
 }
@@ -879,7 +1053,7 @@ function renderClue(ent){
 function renderLetters(){
   grid.flat().forEach(cell => {
     [...cell.el.childNodes].forEach(n => {
-      if (n.nodeType === 1 && n.classList.contains('num')) return;
+      if (n.nodeType === 1 && (n.classList.contains('num') || n.classList.contains('flower-icon'))) return;
       cell.el.removeChild(n);
     });
     cell.el.classList.remove('active');
@@ -1179,6 +1353,7 @@ function setupHandlers(){
   // Reveal answer: fill the current entry with the correct letters and mark it as solved
   if (btnGiveUp) btnGiveUp.addEventListener('click', () => {
     if (!currentEntry) return;
+    recordRevealUsage();
     currentEntry.cells.forEach((cell, idx) => {
       cell.letter = currentEntry.answer[idx];
       // Highlight entire answer when revealed
@@ -1283,6 +1458,8 @@ function restartGame(){
     }
   });
   puzzleFinished = false;
+  totalHintsUsed = 0;
+  usedAnyReveal = false;
   updateCompletionUi(false);
   if (shareModal) shareModal.hidden = true;
   if (copyToast) copyToast.hidden = true;
@@ -1299,6 +1476,7 @@ function restartGame(){
 
   focusFirstCell();
   renderLetters();
+  refreshFlowerIcons();
 }
 
 function escapeHtml(s=''){
@@ -1769,6 +1947,9 @@ function applyPuzzle(data){
   lastClickedCellKey = null;
   dirToggle.clear();
   puzzleFinished = false;
+  totalHintsUsed = 0;
+  usedAnyReveal = false;
+  appliedFlowerKey = null;
   updateCompletionUi(false);
   if (shareModal) shareModal.hidden = true;
   if (copyToast) copyToast.hidden = true;
@@ -1790,6 +1971,7 @@ function applyPuzzle(data){
   placeEntries();
   focusFirstCell();
   if (mobileInput && !mobileBehaviours.isActive()) mobileInput.focus();
+  refreshFlowerIcons();
 }
 
 function useFallbackPuzzle(){
