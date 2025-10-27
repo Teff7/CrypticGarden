@@ -785,6 +785,7 @@ function onPuzzleComplete(){
     btnViewResult.focus();
   }
   mobileBehaviours.hideKeyboard();
+  handleFlowerOnCompletion();
   openShareModal();
   finishGame();
 }
