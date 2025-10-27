@@ -103,6 +103,21 @@ body{
   position:relative; font-size:1.2rem; font-weight:700; user-select:none;
 }
 .cell.block{ background:#000; border-color:#000; color:#000; }
+.cell.block.flowered{ display:flex; align-items:center; justify-content:center; }
+.flower-icon{
+  width:90%;
+  height:90%;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  pointer-events:none;
+  animation:flower-pop .15s ease-out;
+}
+.flower-icon svg{ width:100%; height:100%; display:block; }
+@keyframes flower-pop{
+  from{ transform:scale(0.8); opacity:0; }
+  to{ transform:scale(1); opacity:1; }
+}
 .cell .num{ position:absolute; top:2px; left:4px; font-size:.65rem; color:#000; font-weight:700; z-index:1; }
 .cell .letter{ position:relative; z-index:1; }
 .cell.active{ animation:flash 1s infinite alternate; outline:2px solid #fff; }
