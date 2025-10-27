@@ -1,0 +1,430 @@
+/* Base */ /* Section title for the global design tokens. */
+:root{ /* Begins CSS custom properties on the root element. */
+  --bg:#000; --fg:#fff; --tooltip-bg:#fff; --tooltip-fg:#000; --cell:44px; /* Sets reusable colours and base cell size. */
+  --tip-col-1:#fff2a8; /* Highlight colour for clue tip group 1. */
+  --tip-col-2:#b9f4c8; /* Highlight colour for clue tip group 2. */
+  --tip-col-3:#b4e1ff; /* Highlight colour for clue tip group 3. */
+  --tip-col-4:#fbc4ff; /* Highlight colour for clue tip group 4. */
+  --tip-col-5:#ffe0b5; /* Highlight colour for clue tip group 5. */
+  --tip-col-6:#d6c4ff; /* Highlight colour for clue tip group 6. */
+  --definition-highlight:#ffb6e3; /* Background used when the definition hint is active. */
+} /* Closes the :root definition block. */
+*{box-sizing:border-box} /* Makes every element include borders and padding in its total size. */
+html,body{height:100%} /* Ensures the page and viewport elements stretch to full height. */
+body{ /* Starts styling for the body element. */
+  margin:0; background:var(--bg); color:var(--fg); /* Removes default margin and applies the dark theme colours. */
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; /* Chooses a modern sans-serif stack for text. */
+} /* Ends the body rules. */
+
+.visually-hidden{ /* Begins utility class for screen-reader-only content. */
+  position:absolute; /* Positions the element so it can be removed from normal flow. */
+  width:1px; /* Shrinks the element width to a pixel. */
+  height:1px; /* Shrinks the element height to a pixel. */
+  padding:0; /* Removes padding to keep the box tiny. */
+  margin:-1px; /* Moves it out of view without affecting layout. */
+  overflow:hidden; /* Hides any overflowed content. */
+  clip:rect(0,0,0,0); /* Clips the element to an empty rectangle for older browsers. */
+  white-space:nowrap; /* Prevents text from wrapping, keeping the box minimal. */
+  border:0; /* Removes any border so nothing renders visually. */
+} /* Ends the visually-hidden helper. */
+
+/* Ensure the HTML [hidden] attribute actually hides sections */ /* Comment describing the next rule. */
+[hidden]{ display:none !important; } /* Forces elements with hidden attribute to stay invisible. */
+
+/* Screens */ /* Heading comment for screen layout rules. */
+.welcome-screen,.game-screen{ /* Targets the welcome and game container sections. */
+  min-height:100vh; /* Makes them at least the height of the viewport. */
+  display:flex; flex-direction:column; /* Stacks their children vertically using flexbox. */
+  align-items:center; justify-content:center; /* Centers children horizontally and vertically. */
+  gap:1rem; text-align:center; /* Adds spacing between children and centers text. */
+} /* Ends the layout rule for the screen containers. */
+.brand{font-weight:800; letter-spacing:.02em} /* Styles the brand name to appear bold with slight spacing. */
+
+/* Roadmap (unchanged) */ /* Comment labelling the roadmap feature styles. */
+.roadmap{display:flex; gap:1rem; margin:1rem 0;} /* Lays out roadmap items in a row with spacing around them. */
+.road-item{ /* Starts styling for each roadmap badge. */
+  width:56px; height:56px; border:2px solid var(--fg); border-radius:14px; /* Sets size, border, and rounded corners. */
+  display:grid; place-items:center; position:relative; /* Centers content and enables absolute children. */
+} /* Ends the roadmap item rule. */
+.icon{width:28px; height:28px; fill:var(--fg)} /* Sizes inline SVG icons and colours them with the foreground colour. */
+.road-item::after{ /* Styles the tooltip shown when hovering a roadmap item. */
+  content:attr(data-tip); position:absolute; left:50%; transform:translate(-50%,calc(-100% - 10px)); /* Positions tooltip text above the item and centers it. */
+  background:var(--tooltip-bg); color:var(--tooltip-fg); /* Applies the tooltip colour scheme. */
+  padding:.4rem .6rem; border-radius:8px; white-space:nowrap; /* Gives the tooltip a rounded shape and keeps text on one line. */
+  opacity:0; pointer-events:none; transition:opacity .15s; font-size:.9rem; /* Starts hidden and fades in smoothly without stealing pointer events. */
+} /* Ends the tooltip pseudo-element rule. */
+.road-item:hover::after{opacity:1} /* Reveals the tooltip when the user hovers the item. */
+
+/* Buttons */ /* Comment labelling the button styles. */
+.play-button,.help-button{ /* Targets both primary button styles. */
+  border:2px solid var(--fg); background:transparent; color:var(--fg); /* Draws outlined buttons using the theme colour. */
+  padding:.55rem 1rem; border-radius:12px; font-weight:600; cursor:pointer; /* Adds comfortable padding, rounded corners, bold text, and pointer cursor. */
+} /* Ends the shared button rule. */
+.help-button.small{padding:.35rem .6rem; font-size:.9rem} /* Slightly shrinks the compact help buttons. */
+
+/* TOP: centre date + menu as a group */ /* Comment describing the top bar layout. */
+.top-bar{ width:min(560px, 92vw); display:flex; justify-content:center; } /* Limits width and centers contents inside the top bar. */
+.top-center{ display:flex; align-items:center; justify-content:center; gap:.6rem; flex-wrap:wrap; } /* Aligns dropdown and date neatly with wrapping support. */
+.puzzle-select{ /* Styles the puzzle selection dropdown. */
+  border:2px solid var(--fg); /* Gives the dropdown a bold outline. */
+  background:transparent; /* Keeps the dropdown background dark to match theme. */
+  color:var(--fg); /* Ensures the text remains legible on dark theme. */
+  padding:.35rem .75rem; /* Adds padding for touch targets. */
+  border-radius:12px; /* Matches the rounded button look. */
+  font-weight:600; /* Makes the text slightly bold. */
+  font-size:.95rem; /* Sets a readable size. */
+} /* Ends puzzle-select styling. */
+.puzzle-select:disabled{ opacity:.6; } /* Makes the dropdown appear faded when disabled. */
+.puzzle-select option{ color:#000; } /* Ensures option text is readable when the dropdown opens. */
+.date{ font-size:.95rem; opacity:.8; display:none; } /* Styles the puzzle date text and hides it until data arrives. */
+
+/* Dropdowns */ /* Comment labelling dropdown controls. */
+.dropdown{position:relative} /* Allows dropdown menus to position themselves relative to the trigger. */
+.dropdown .menu{ /* Styles the dropdown menu panel. */
+  position:absolute; top:calc(100% + 8px); left:50%; transform:translateX(-50%); /* Positions the menu below the trigger and centers it. */
+  background:#111; border:1px solid #444; border-radius:12px; padding:.3rem; display:none; min-width:200px; z-index:10; text-align:center; /* Gives the menu a dark card look and hides it by default. */
+} /* Ends dropdown menu styling. */
+.dropdown.open .menu{display:block} /* Shows the menu when the dropdown has the open class. */
+.menu-item{ /* Styles each clickable item inside the menu. */
+  width:100%; background:transparent; color:var(--fg); /* Fills the menu width and matches the theme colours. */
+  border:1px solid #444; text-align:center; padding:.5rem .6rem; border-radius:8px; cursor:pointer; margin:.25rem 0; /* Gives each option separation and makes it clickable. */
+} /* Ends menu-item styling. */
+.menu-item:hover{background:#1e1e1e} /* Slightly lightens the background when hovering menu items. */
+
+/* Grid */ /* Comment labelling the crossword grid styles. */
+.grid{ /* Starts the grid container styling. */
+  display:grid; grid-template-columns:repeat(5, var(--cell)); grid-template-rows:repeat(5, var(--cell)); /* Creates a 5×5 grid using the --cell size. */
+  gap:4px; margin-top:.5rem; /* Adds spacing between cells and separates the grid from the top. */
+} /* Ends grid container styling. */
+.cell{ /* Styles each crossword cell. */
+  width:var(--cell); height:var(--cell); /* Makes each cell square using the shared size. */
+  display:grid; place-items:center; /* Centers letters within the cell. */
+  background:#fff; color:#000; border:2px solid #fff; /* Gives open cells a white background with white border edges. */
+  position:relative; font-size:1.2rem; font-weight:700; user-select:none; /* Positions for overlays, sets bold text, and prevents selection. */
+} /* Ends standard cell styling. */
+.cell.block{ background:#000; border-color:#000; color:#000; } /* Colours block cells black so they disappear. */
+.cell .num{ position:absolute; top:2px; left:4px; font-size:.65rem; color:#000; font-weight:700; z-index:1; } /* Positions clue numbers in the top-left corner of each cell. */
+.cell .letter{ position:relative; z-index:1; } /* Ensures letters sit above background overlays. */
+.cell.active{ animation:flash 1s infinite alternate; outline:2px solid #fff; } /* Animates the active cell so players can spot it. */
+.cell.tooltip-highlight{ z-index:1; } /* Lifts highlighted cells above neighbours. */
+.cell.tooltip-highlight::after{ /* Adds the glowing overlay for tooltip-highlighted cells. */
+  content:""; /* Uses an empty pseudo-element box. */
+  position:absolute; /* Positions the overlay over the cell. */
+  inset:-3px; /* Slightly enlarges the overlay beyond the cell edges. */
+  border-radius:10px; /* Rounds the overlay corners. */
+  background:rgba(255, 237, 134, .55); /* Applies a translucent yellow highlight. */
+  animation:tooltip-pulse .6s ease-in-out infinite alternate; /* Pulses the overlay to draw attention. */
+  pointer-events:none; /* Lets clicks pass through to the cell. */
+  z-index:0; /* Places the overlay behind the letter content. */
+} /* Ends tooltip overlay styling. */
+.cell.tooltip-highlight.active{ outline:2px solid #fff; } /* Adds a white outline when the highlighted cell is also active. */
+@keyframes tooltip-pulse{ /* Defines the pulsing animation for highlighted cells. */
+  from{ opacity:.35; } /* Starts with faint opacity. */
+  to{ opacity:.9; } /* Ends with stronger opacity. */
+} /* Ends tooltip-pulse animation. */
+@keyframes flash { 0%{background:#fff;color:#000} 100%{background:#000;color:#fff} } /* Defines the flashing animation for the active cell. */
+
+/* Clue panel */ /* Comment labelling the clue panel area. */
+.clue-section{ /* Styles the wrapper that holds clue text and buttons. */
+  width:min(560px, 92vw); /* Keeps the panel within a comfortable width on all screens. */
+  display:flex; /* Uses flex layout for vertical arrangement. */
+  flex-direction:column; /* Stacks children top to bottom. */
+  align-items:center; /* Centers children horizontally. */
+  gap:.75rem; /* Adds spacing between items. */
+} /* Ends clue-section styling. */
+.clue-panel{ width:100%; } /* Lets the clue panel stretch across the container. */
+.clue-header{ opacity:.9; margin-top:1rem; } /* Softens the clue header and spaces it down from the grid. */
+.clue{ font-size:1.1rem; margin:.5rem auto 0; position:relative; } /* Styles the clue text and prepares it for overlays. */
+
+/* Enumeration styling */ /* Comment for enumeration-specific styles. */
+.clue .enumeration{ /* Targets the enumeration span within a clue. */
+  opacity:.8; font-size:.9rem; font-style:italic; /* Makes enumeration text lighter and italic. */
+} /* Ends enumeration styling. */
+.clue .indicator,.clue .fodder,.clue .def{ position:relative } /* Allows tooltip overlays on key clue segments. */
+.clue.annot-on .indicator{ color:#9ad; } /* Colours indicator text when annotation mode is on. */
+.clue.annot-on .fodder{ color:#f47; } /* Colours fodder text when annotation mode is on. */
+.clue.help-on .def{ /* Styles the definition highlight when the help mode is active. */
+  background:var(--definition-highlight); /* Fills the definition with the dedicated highlight colour. */
+  color:#000; /* Uses dark text on the light background. */
+  font-weight:600; /* Emphasises the definition text. */
+  border-radius:4px; /* Softens the corners of the highlight. */
+  padding:0 .25em; /* Adds a little horizontal padding inside the highlight. */
+} /* Ends help-on definition styling. */
+.clue.help-on.annot-on .def.has-tip{ /* Styles definitions that also carry tooltips during annotation mode. */
+  box-shadow:0 0 0 1px rgba(0,0,0,.05) inset; /* Adds a subtle inner border for contrast. */
+} /* Ends combined help/annot definition styling. */
+.clue.annot-on .has-tip{ /* Styles any clue segment flagged with a tip class while annotations show. */
+  padding:0 .2em; /* Adds slight padding to make the highlight feel intentional. */
+  border-radius:4px; /* Rounds the highlight edges. */
+  color:#000; /* Switches text to dark for readability. */
+  font-weight:600; /* Makes the highlighted text bold. */
+} /* Ends has-tip styling. */
+.clue.annot-on .tip-1{ background:var(--tip-col-1); } /* Applies colour swatch 1 to the corresponding tip span. */
+.clue.annot-on .tip-2{ background:var(--tip-col-2); } /* Applies colour swatch 2 to the corresponding tip span. */
+.clue.annot-on .tip-3{ background:var(--tip-col-3); } /* Applies colour swatch 3 to the corresponding tip span. */
+.clue.annot-on .tip-4{ background:var(--tip-col-4); } /* Applies colour swatch 4 to the corresponding tip span. */
+.clue.annot-on .tip-5{ background:var(--tip-col-5); } /* Applies colour swatch 5 to the corresponding tip span. */
+.clue.annot-on .tip-6{ background:var(--tip-col-6); } /* Applies colour swatch 6 to the corresponding tip span. */
+
+/* Tooltips — rendered dynamically so they can stay within the viewport */ /* Comment explaining the tooltip element. */
+.clue-tooltip{ /* Styles the floating tooltip element inserted in the DOM. */
+  position:fixed; /* Keeps the tooltip anchored relative to the viewport. */
+  background:var(--tooltip-bg); /* Uses the tooltip background colour. */
+  color:var(--tooltip-fg); /* Uses the tooltip text colour. */
+  padding:.35rem .5rem; /* Adds comfortable spacing around the text. */
+  border-radius:6px; /* Gives the tooltip rounded corners. */
+  font-size:.95rem; /* Sets a readable type size. */
+  line-height:1.2; /* Uses a compact line height to save space. */
+  box-shadow:0 2px 6px rgba(0,0,0,.3); /* Adds a subtle drop shadow for depth. */
+  z-index:100; /* Ensures the tooltip appears above most UI. */
+  pointer-events:none; /* Prevents the tooltip from blocking user input. */
+  word-wrap:break-word; /* Allows long text to wrap instead of overflowing. */
+  max-width:320px; /* Limits the tooltip width to keep it readable. */
+} /* Ends tooltip styling. */
+
+@media (max-width: 600px){ /* Begins a mobile media query. */
+  .clue.annot-on .indicator:hover::after, /* Targets tooltip pseudo elements on small screens. */
+  .clue.annot-on .fodder:hover::after, /* Includes fodder segments for the same treatment. */
+  .clue.annot-on .def:hover::after{ /* Includes definition segments as well. */
+    max-width:calc(100vw - 32px); /* Restricts tooltip width to fit within the viewport minus margins. */
+  } /* Ends the hover adjustments. */
+} /* Ends the media query. */
+
+/* Device colouring (first indicator) */ /* Comment describing clue-type accent colours. */
+.clue.acrostic  { --indicator-col:#6fa8dc; } /* Sets the indicator accent colour for acrostic clues. */
+.clue.hidden    { --indicator-col:#4caf50; } /* Sets the indicator accent colour for hidden clues. */
+.clue.container { --indicator-col:#b97aeb; } /* Sets the indicator accent colour for container clues. */
+.clue.reversal  { --indicator-col:#20b2aa; } /* Sets the indicator accent colour for reversal clues. */
+.clue.deletion  { --indicator-col:#ffca28; } /* Sets the indicator accent colour for deletion clues. */
+.clue.homophone { --indicator-col:#e91e63; } /* Sets the indicator accent colour for homophone clues. */
+.clue.anagram   { --indicator-col:#6fa8dc; } /* Sets the indicator accent colour for anagram clues. */
+.clue.charade   { --indicator-col:#8d6e63; } /* Sets the indicator accent colour for charade clues. */
+.clue.double    { --indicator-col:#9e9e9e; } /* Sets the indicator accent colour for double definition clues. */
+.clue.lit       { --indicator-col:#c0c0c0; } /* Sets the indicator accent colour for &lit clues. */
+
+/* Bottom actions — centred under the clue */ /* Comment introducing the bottom button bar styling. */
+.bottom-actions{ /* Styles the container that holds the lower buttons. */
+  width:100%; /* Lets it span the clue section width. */
+  display:flex; flex-wrap:wrap; align-items:center; justify-content:center; gap:.5rem; /* Centers buttons and allows wrapping with gaps. */
+  margin:1rem auto 1.25rem; /* Adds space above and below the controls. */
+} /* Ends bottom-actions styling. */
+
+.mobile-keyboard{ display:none; } /* Hides the on-screen keyboard until the mobile script enables it. */
+
+.mobile-keyboard-row{ display:flex; justify-content:center; gap:.35rem; } /* Arranges keyboard rows horizontally with spacing. */
+.mobile-keyboard button{ /* Styles each key on the mobile keyboard. */
+  flex:1; /* Allows alphabet keys to expand evenly. */
+  border:0; /* Removes default button border. */
+  border-radius:10px; /* Gives keys soft rounded corners. */
+  padding:.75rem 0; /* Adds vertical padding for comfortable tapping. */
+  font-size:1.05rem; /* Sets a readable key label size. */
+  font-weight:600; /* Makes the characters bold for clarity. */
+  background:#1a1a1a; /* Uses a dark background to match the app theme. */
+  color:#fff; /* Keeps the letter visible against the dark key. */
+  box-shadow:0 2px 6px rgba(0,0,0,.3); /* Adds depth so keys feel tangible. */
+} /* Ends mobile key styling. */
+.mobile-keyboard button:active{ transform:scale(.97); } /* Slightly shrinks a key while it is pressed to mimic feedback. */
+.mobile-keyboard-row.controls button{ /* Special styling for the control row of the keyboard. */
+  flex:0; /* Prevents control buttons from stretching. */
+  padding:.65rem 1.1rem; /* Gives control keys balanced padding. */
+  font-size:.95rem; /* Slightly reduces text size for auxiliary actions. */
+} /* Ends control-row styling. */
+
+.mobile-keyboard button.close-keyboard{ background:#333; } /* Darkens the close keyboard button. */
+.mobile-keyboard button.action-key{ background:#444; } /* Gives action keys a mid-tone colour. */
+.mobile-keyboard button.delete-key{ background:#b53; } /* Colours the delete key red for emphasis. */
+
+@media (hover:hover){ /* Media query for devices with hover support. */
+  .mobile-keyboard button:hover{ background:#2c2c2c; } /* Lightens mobile keys slightly on hover for desktop testing. */
+} /* Ends hover media query. */
+
+body.mobile-touch{ /* Styles that apply when the app is in mobile touch mode. */
+  --mobile-keyboard-space:0px; /* Initial space reserved for the keyboard overlay. */
+} /* Ends root adjustments for mobile touch. */
+body.mobile-touch .game-screen{ /* Adjusts the game layout in mobile touch mode. */
+  align-items:stretch; /* Lets the sections span the available width. */
+  justify-content:flex-start; /* Aligns content toward the top of the screen. */
+  padding:1.5rem 1rem calc(1.5rem + var(--mobile-keyboard-space, 0px) + env(safe-area-inset-bottom, 0px)); /* Adds padding while accounting for keyboard height and safe areas. */
+  gap:1.25rem; /* Spaces the sections slightly further apart. */
+} /* Ends mobile touch adjustments on the game screen. */
+body.mobile-touch .top-bar, /* Applies the same width rule to the top bar in mobile mode. */
+body.mobile-touch .clue-section{ /* Also targets the clue section. */
+  width:100%; /* Lets these sections stretch full width. */
+  max-width:560px; /* Keeps them from becoming too wide on tablets. */
+  margin:0 auto; /* Centers them horizontally. */
+} /* Ends shared width rules. */
+body.mobile-touch #grid{ /* Adjusts the grid order for mobile layout. */
+  order:3; /* Moves the grid below clue text and above keyboard. */
+  margin:0 auto; /* Centers the grid. */
+} /* Ends grid adjustments for mobile. */
+body.mobile-touch .clue-section{ /* Further tweaks for the clue area on mobile. */
+  order:2; /* Places the clue section above the grid. */
+  gap:.5rem; /* Reduces the spacing between clue elements. */
+} /* Ends mobile clue section tweaks. */
+body.mobile-touch .mobile-keyboard{ /* Styles the keyboard overlay in mobile mode. */
+  order:4; /* Keeps the keyboard at the bottom of the stack. */
+  display:none; /* Hidden until toggled visible. */
+  position:fixed; /* Pins the keyboard to the bottom of the viewport. */
+  left:50%; /* Centers the keyboard horizontally. */
+  transform:translateX(-50%); /* Uses transform to finish centering. */
+  bottom:0; /* Anchors the keyboard at the bottom edge. */
+  width:100%; /* Allows it to stretch across the device width. */
+  max-width:560px; /* Prevents it from becoming too wide on large screens. */
+  background:#0d0d0d; /* Uses a near-black background for contrast. */
+  border-radius:18px 18px 0 0; /* Rounds the top corners to look like a sheet. */
+  border:1px solid #222; /* Adds a subtle outline around the keyboard. */
+  border-bottom:none; /* Removes the bottom border to blend with screen edge. */
+  box-shadow:0 -12px 32px rgba(0,0,0,.55); /* Adds a shadow to lift it from the content. */
+  padding:1rem .65rem calc(1rem + env(safe-area-inset-bottom, 0px)); /* Adds comfortable padding and respects device safe area. */
+  z-index:50; /* Ensures the keyboard sits above the main interface. */
+} /* Ends mobile keyboard overlay styling. */
+body.mobile-touch .mobile-keyboard.visible{ display:block; } /* Shows the keyboard when the visible class is added. */
+body.mobile-touch .clue-header{ margin-top:.35rem; } /* Reduces the top margin on the clue header for compact layout. */
+body.mobile-touch .bottom-actions{ margin:0; } /* Removes extra margin below the button row on mobile. */
+body.mobile-touch .dropdown .menu{ transform:translate(-50%, 0); } /* Keeps dropdown menus aligned when space is tight. */
+body.mobile-touch .grid{ margin-top:0; } /* Removes top margin to tighten the mobile layout. */
+body.mobile-touch .top-bar{ order:1; } /* Ensures the top bar stays at the top of the stack. */
+
+body.mobile-touch.mobile-keyboard-open{ /* Applies when the mobile keyboard is raised. */
+  --mobile-keyboard-space:var(--mobile-keyboard-height, 0px); /* Reserves vertical space equal to the keyboard height. */
+} /* Ends keyboard-open adjustments. */
+
+/* Modal & fireworks */ /* Comment labelling modal and celebratory effects. */
+.game-screen{ position:relative; z-index:0; } /* Allows overlays to stack above the game screen. */
+
+.modal{ /* Styles the modal overlay shared by help and share dialogs. */
+  position:fixed; inset:0; display:grid; place-items:center; background:rgba(0,0,0,.6); /* Covers the screen and centers the modal with a translucent backdrop. */
+  z-index:100; /* Places the modal above most other UI elements. */
+} /* Ends modal overlay styling. */
+.modal[hidden]{ display:none } /* Ensures hidden modals do not occupy space. */
+.modal-card{ /* Styles the inner modal content card. */
+  width:min(680px, 92vw); max-height:86vh; overflow:auto; /* Limits modal size and lets content scroll if needed. */
+  background:#111; border:1px solid #444; border-radius:16px; padding:1rem 1.25rem; /* Gives the card a dark, rounded appearance with padding. */
+  display:block; /* Ensures the card behaves as a block element. */
+  position:relative; z-index:1; /* Raises the card above the overlay and enables sticky children. */
+} /* Ends modal-card styling. */
+#shareModal{ z-index:120; } /* Raises the share modal above other overlays like fireworks. */
+#shareModal .modal-card{ /* Additional layout for the share modal’s content. */
+  display:flex; /* Uses flexbox inside the card. */
+  flex-direction:column; /* Stacks share modal sections vertically. */
+  align-items:stretch; /* Lets inner elements stretch full width. */
+  text-align:left; /* Aligns text left for better readability. */
+  gap:1rem; /* Adds space between stacked sections. */
+} /* Ends share modal card adjustments. */
+
+#shareHeading, /* Groups heading and subheading for shared rules. */
+#shareSubheading{ /* Applies to the translated subheading too. */
+  align-self:center; /* Centers the headings within the card. */
+  text-align:center; /* Centers the text content itself. */
+} /* Ends heading alignment. */
+
+#shareHeading{ /* Styles the main share heading. */
+  margin:0; /* Removes default heading margins. */
+} /* Ends share heading styling. */
+
+.results-translation{ /* Styles the translated results line. */
+  margin:-0.5rem 0 0; /* Pulls the translation closer to the main heading. */
+  font-style:italic; /* Indicates it is secondary information. */
+  color:#d8d8d8; /* Uses a lighter grey for contrast without overpowering. */
+} /* Ends translation styling. */
+
+.results-lede{ /* Styles the intro sentence above the results list. */
+  margin:0; /* Removes default paragraph spacing. */
+  color:#f0f0f0; /* Keeps the text bright enough to read easily. */
+} /* Ends results-lede styling. */
+
+.results-body{ /* Styles the container that lists each clue outcome. */
+  display:flex; /* Uses flexbox to stack entries. */
+  flex-direction:column; /* Aligns entries vertically. */
+  gap:0.75rem; /* Adds spacing between entries. */
+  width:100%; /* Lets the list stretch across the card. */
+} /* Ends results-body styling. */
+
+.result-entry{ /* Styles each row in the results list. */
+  display:flex; /* Lays out the label and explanation side by side. */
+  align-items:flex-start; /* Aligns text to the top so varying lengths line up neatly. */
+  gap:0.5rem; /* Adds space between the label and comment. */
+  line-height:1.55; /* Sets a comfortable reading line height. */
+} /* Ends result-entry styling. */
+
+.result-entry[role="listitem"]{ /* Adjusts semantics-based list items. */
+  list-style:none; /* Removes default bullet styling. */
+} /* Ends listitem adjustments. */
+
+.result-label{ /* Styles the entry label (e.g., 1A). */
+  font-weight:600; /* Makes the clue id stand out. */
+  text-transform:uppercase; /* Shows identifiers in uppercase to match grid. */
+  min-width:2.5rem; /* Reserves space so labels align. */
+} /* Ends result-label styling. */
+
+.result-answer{ /* Styles the answer portion of the summary. */
+  font-weight:700; /* Bold text emphasises the solved answer. */
+  white-space:nowrap; /* Keeps the answer and colon together on one line. */
+} /* Ends result-answer styling. */
+
+.result-comment{ /* Styles the setter comment text. */
+  flex:1; /* Lets comments grow to fill the remaining space. */
+} /* Ends result-comment styling. */
+
+.share-grid{ /* Styles the small emoji grid preview shown in the modal. */
+  display:grid; /* Uses CSS grid for the miniature board. */
+  grid-template-columns:repeat(5,1fr); /* Creates five equal-width columns. */
+  grid-auto-rows:1fr; /* Makes each row the same height. */
+  gap:2px; /* Adds spacing between share squares. */
+  width:min(80vw,250px); /* Limits the grid width for readability. */
+  aspect-ratio:1; /* Keeps the preview square. */
+  align-self:center; /* Centers the grid within the modal card. */
+  margin:0 auto 0.5rem; /* Centers it and adds space below. */
+  place-content:center; /* Ensures inner cells are centered if the grid shrinks. */
+} /* Ends share-grid styling. */
+
+.share-cell{ /* Styles each mini cell inside the share preview. */
+  width:100%; /* Makes the cell fill its grid column. */
+  aspect-ratio:1; /* Keeps each preview cell square. */
+} /* Ends share-cell styling. */
+
+.share-actions{ /* Styles the container holding copy and link buttons. */
+  display:flex; /* Lays out actions horizontally. */
+  flex-wrap:wrap; /* Allows buttons to wrap on narrow screens. */
+  gap:0.5rem; /* Adds spacing between buttons. */
+  justify-content:center; /* Centers the buttons under the preview. */
+} /* Ends share-actions styling. */
+.help-body{ /* Styles the body content within modals. */
+  width:100%; /* Ensures it spans the card width. */
+  margin-top:1rem; /* Adds a top margin above the copy. */
+  text-align:left; /* Aligns help text to the left for readability. */
+  line-height:1.55; /* Provides comfortable reading spacing. */
+  white-space:pre-line; /* Preserves line breaks while collapsing multiple spaces. */
+} /* Ends help-body styling. */
+.modal-close{ /* Styles the close button in modals. */
+  position:sticky; top:0; /* Keeps the close button visible while scrolling. */
+  margin-left:auto; /* Pushes the button to the right edge. */
+  display:block; /* Ensures it behaves as a block-level element. */
+  border:0; background:transparent; color:#fff; font-size:2rem; cursor:pointer; /* Removes default button look and enlarges the icon. */
+} /* Ends modal-close styling. */
+.fireworks{ position:fixed; inset:0; pointer-events:none; z-index:90; } /* Defines the canvas area used for celebration effects. */
+.pixel{ position:absolute; width:2px; height:2px; background:#fff } /* Styles each particle in the fireworks effect. */
+
+/* Share modal preview grid */ /* Placeholder comment retained from original file. */
+
+
+/* Copy toast */ /* Comment introducing toast notification styling. */
+.toast{ /* Styles the floating toast notification. */
+  position:fixed; left:50%; bottom:1rem; transform:translateX(-50%); /* Centers the toast near the bottom of the screen. */
+  background:#333; color:#fff; /* Uses a dark background with white text for contrast. */
+  padding:.4rem .8rem; border-radius:8px; font-size:.9rem; /* Adds padding, rounded corners, and readable text size. */
+} /* Ends toast styling. */
+.toast.hint-toast{ /* Additional styling when the toast conveys hint information. */
+  bottom:3.5rem; /* Raises the toast above other UI elements. */
+  background:#1f6feb; /* Uses a blue background to signal hints. */
+  color:#fff; /* Keeps the text white for contrast. */
+  text-align:center; /* Centers multi-line hint text. */
+  max-width:min(320px, 90vw); /* Restricts toast width so it stays readable. */
+  line-height:1.35; /* Adjusts line spacing for multi-line content. */
+  box-shadow:0 4px 10px rgba(0,0,0,.35); /* Adds depth with a soft shadow. */
+} /* Ends hint toast styling. */
+
+.toast.hint-toast.mobile-grid-overlay{ /* Styles when the hint toast overlaps the mobile grid. */
+  z-index:60; /* Places the toast above the grid overlay. */
+  pointer-events:auto; /* Allows the user to interact with buttons inside the toast. */
+} /* Ends mobile-grid overlay adjustments. */
