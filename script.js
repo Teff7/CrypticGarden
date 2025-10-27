@@ -1411,29 +1411,31 @@ function interpretSegmentType(raw){
   return { type: 'indicator', category };
 }
 
-function parsePositionList(raw){
+function parsePositionList(raw, answerLength){
   if (raw == null) return [];
-  if (Array.isArray(raw)){
-    const numbers = raw
-      .map(value => Number(value))
-      .filter(num => Number.isFinite(num));
-    if (!numbers.length) return [];
-    const hasZero = numbers.some(num => num === 0);
-    const offset = hasZero ? 0 : 1;
+  const maxLen = Number.isFinite(answerLength) && answerLength > 0 ? Math.floor(answerLength) : null;
+  const collectNumbers = (values) => {
     const seen = new Set();
     const result = [];
-    numbers.forEach(num => {
-      const idx = num - offset;
-      if (idx < 0 || seen.has(idx)) return;
-      seen.add(idx);
-      result.push(idx);
+    values.forEach(value => {
+      const num = Number(value);
+      if (!Number.isFinite(num)) return;
+      const int = Math.trunc(num);
+      if (int < 0 || seen.has(int)) return;
+      seen.add(int);
+      result.push(int);
     });
     return result;
+  };
+
+  if (Array.isArray(raw)){
+    const numbers = collectNumbers(raw);
+    return normalisePositions(numbers, maxLen);
   }
 
   const str = String(raw).trim();
   if (!str) return [];
-  const numbers = [];
+  const values = [];
   const regex = /(\d+)(?:\s*-\s*(\d+))?/g;
   let match;
   while ((match = regex.exec(str))){
@@ -1447,18 +1449,48 @@ function parsePositionList(raw){
       start = tmp;
     }
     for (let n = start; n <= end; n++){
-      numbers.push(n);
+      values.push(n);
     }
   }
-  if (!numbers.length) return [];
-  const hasZero = numbers.some(num => num === 0);
-  const offset = hasZero ? 0 : 1;
+  const numbers = collectNumbers(values);
+  return normalisePositions(numbers, maxLen);
+}
+
+function normalisePositions(numbers, maxLen){
+  if (!Array.isArray(numbers) || !numbers.length) return [];
+  const unique = [];
   const seen = new Set();
-  const result = [];
   numbers.forEach(num => {
-    const idx = num - offset;
-    if (idx < 0 || seen.has(idx)) return;
-    seen.add(idx);
+    if (seen.has(num)) return;
+    seen.add(num);
+    unique.push(num);
+  });
+  if (!unique.length) return [];
+
+  let base = 0;
+  const hasZero = unique.some(num => num === 0);
+  if (!hasZero){
+    if (maxLen != null){
+      const hitsLength = unique.some(num => num === maxLen);
+      const exceedsLength = unique.some(num => num > maxLen);
+      if (hitsLength || exceedsLength){
+        base = 1;
+      } else if (unique.length === 1 && unique[0] === 1){
+        base = 1;
+      }
+    } else if (unique.length === 1 && unique[0] === 1){
+      base = 1;
+    }
+  }
+
+  const result = [];
+  const finalSeen = new Set();
+  unique.forEach(num => {
+    const idx = base === 1 ? num - 1 : num;
+    if (!Number.isFinite(idx) || idx < 0) return;
+    if (maxLen != null && idx >= maxLen) return;
+    if (finalSeen.has(idx)) return;
+    finalSeen.add(idx);
     result.push(idx);
   });
   return result;
@@ -1506,7 +1538,7 @@ function readTooltipField(row, index, field, suffix){
   return null;
 }
 
-function buildSegmentsLegacy(row){
+function buildSegmentsLegacy(row, answerLength){
   const segments = [];
   if (!row) return segments;
   for (let i = 1; i <= 6; i++){
@@ -1524,7 +1556,7 @@ function buildSegmentsLegacy(row){
     if (category) segment.category = category;
     if (tipText) segment.tooltip = tipText;
     segment.tipNumber = i;
-    const positions = parsePositionList(posRaw);
+    const positions = parsePositionList(posRaw, answerLength);
     if (positions.length) segment.positions = positions;
     segments.push(segment);
   }
@@ -1554,7 +1586,7 @@ function readNewFormatSegmentField(row, base, index){
   return null;
 }
 
-function buildSegmentsNewFormat(row){
+function buildSegmentsNewFormat(row, answerLength){
   const segments = [];
   if (!row) return segments;
   for (let i = 1; i <= 6; i++){
@@ -1570,7 +1602,7 @@ function buildSegmentsNewFormat(row){
     const segment = { type, text };
     if (category) segment.category = category;
     if (tipText) segment.tooltip = tipText;
-    const positions = parsePositionList(posRaw);
+    const positions = parsePositionList(posRaw, answerLength);
     if (positions.length) segment.positions = positions;
     segment.tipNumber = i;
     segments.push(segment);
@@ -1578,9 +1610,9 @@ function buildSegmentsNewFormat(row){
   return segments;
 }
 
-function buildSegments(row){
-  if (hasNewFormatSegmentFields(row)) return buildSegmentsNewFormat(row);
-  return buildSegmentsLegacy(row);
+function buildSegments(row, answerLength){
+  if (hasNewFormatSegmentFields(row)) return buildSegmentsNewFormat(row, answerLength);
+  return buildSegmentsLegacy(row, answerLength);
 }
 
 function normalisePositionKey(raw){
@@ -1601,6 +1633,8 @@ function createPuzzleFromRows(key, rows){
     const layout = POSITION_MAP[pos];
     if (!layout) return;
     const { surface, enumeration } = extractClueParts(row.Clue);
+    const answerRaw = String(row.Solution || '').toUpperCase();
+    const answerLength = answerRaw.replace(/[^A-Z0-9]/g, '').length;
     const commentRaw = row.Setters_Comment ?? row.SettersComment ?? row.SetterComment ?? row['Setter Comment'] ?? row["Setter's Comment"] ?? row['Setter’s Comment'] ?? row['Setters Comment'];
     const setterComment = commentRaw != null ? String(commentRaw).trim() : '';
 
@@ -1609,10 +1643,10 @@ function createPuzzleFromRows(key, rows){
       direction: layout.direction,
       row: layout.row,
       col: layout.col,
-      answer: String(row.Solution || '').toUpperCase(),
+      answer: answerRaw,
       clue: {
         surface,
-        segments: buildSegments(row)
+        segments: buildSegments(row, answerLength)
       },
       enumeration: enumeration || null,
       setterComment
